@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcript Playback</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+        #transcript-container { margin-top: 1rem; }
+        #transcript-container span { cursor: pointer; }
+        #transcript-container span:hover { text-decoration: underline; }
+        #transcript-container span.highlight { background-color: yellow; }
+    </style>
+</head>
+<body>
+    <audio id="audio-player" controls>
+        <source src="oaks-message.mp3" type="audio/mp3">
+        Your browser does not support the audio element.
+    </audio>
+    
+    <div id="transcript-container"></div>
+
+    <script type="module">
+import { sttTranscript } from './transcript.js';
+const transcriptContainer = document.getElementById('transcript-container');
+const audioPlayer = document.getElementById('audio-player');
+
+for (let i = 0; i < sttTranscript.chunks.length; i++) {
+    const chunk = sttTranscript.chunks[i];
+    const span = document.createElement('span');
+    span.textContent = chunk.text;
+    chunk.start = chunk.timestamp[0];
+    chunk.end   = chunk.timestamp[1];
+    span.addEventListener('click', () => {
+        audioPlayer.currentTime = chunk.start;
+        audioPlayer.play();
+    });
+    sttTranscript.chunks[i].node = span;
+    transcriptContainer.appendChild(span);
+}
+
+audioPlayer.addEventListener('timeupdate', () => {
+    const currentTime = audioPlayer.currentTime;
+    for (let i = 0; i < sttTranscript.chunks.length; i++) {
+        const chunk = sttTranscript.chunks[i];
+        if (currentTime >= chunk.start && currentTime <= chunk.end) {
+            chunk.node.classList.add('highlight');
+        } else {
+            chunk.node.classList.remove('highlight');
+        }
+    }
+});
+    </script>
+</body>
+</html>

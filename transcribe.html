@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Local Browser Whisper STT (Word Timestamps)</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+        .card { border: 1px solid #ccc; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; background: #fafafa; }
+        button { background: #0070f3; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #status { font-style: italic; color: #555; margin-top: 0.5rem; }
+        #output { background: #222; color: #fff; padding: 1rem; border-radius: 6px; white-space: pre-wrap; font-family: monospace; overflow-x: auto; height: 300px; }
+    </style>
+</head>
+<body>
+
+    <h1>Local Browser Whisper STT</h1>
+    
+    <div class="card">
+        <div id="status">Ready to load...</div>
+        <h3>Choose Audio & Transcribe</h3>
+        <input type="file" id="audio-input" accept="audio/*,video/*">
+        <button id="transcribe-btn" disabled>Transcribe File</button>
+    </div>
+
+    <h3>Output (JSON Word Timestamps)</h3>
+    <pre id="output">The output JSON containing word timestamps will appear here...</pre>
+
+    <!-- Import Transformers.js v3 via CDN (using ES Modules style) -->
+    <script type="module">
+        import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0/+esm';
+
+        let transcriber = null;
+
+        const statusDiv = document.getElementById('status');
+        const audioInput = document.getElementById('audio-input');
+        const transcribeBtn = document.getElementById('transcribe-btn');
+        const outputPre = document.getElementById('output');
+
+        // --- Step 1: Initialize the Model on Click ---
+        (async () => {
+            statusDiv.innerText = 'Loading model into browser memory...';
+            
+            try {
+                // Initialize pipeline with WebGPU execution provider
+                transcriber = await pipeline('automatic-speech-recognition', 'onnx-community/whisper-base_timestamped', {
+                    device: 'webgpu', // Automatically falls back to 'wasm' CPU if WebGPU isn't available
+                });
+                
+                statusDiv.innerText = 'Model successfully loaded! WebGPU is active.';
+                transcribeBtn.disabled = false;
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = 'Error loading model. Make sure your browser supports WebGPU.';
+            }
+        })();
+
+        // --- Step 2: Extract Audio Buffer & Transcribe ---
+        let startTime = null;
+        transcribeBtn.addEventListener('click', async () => {
+            const file = audioInput.files[0];
+            if (!file) {
+                alert('Please select an audio file first!');
+                return;
+            }
+            startTime = performance.now();
+
+            transcribeBtn.disabled = true;
+            statusDiv.innerText = 'Processing audio and transcribing locally...';
+            outputPre.innerText = 'Processing...';
+
+            try {
+                // Read file into an ArrayBuffer
+                const fileBuffer = await file.arrayBuffer();
+                
+                // Decode the file into a standardized 16kHz Float32Array matching Whisper specs
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const audioBuffer = await audioContext.decodeAudioData(fileBuffer);
+                const audioData = audioBuffer.getChannelData(0); // Use the first audio channel
+
+                // Execute local inference
+                const result = await transcriber(audioData, {
+                    chunk_length_s: 30,
+                    stride_length_s: 5,
+                    return_timestamps: 'word', // The magic flag forcing word-level breakdown
+                });
+
+                // apply slight offset to timestamps to correct for minor misalignment
+                for (let i = 0; i < result.chunks.length; i++) {
+                    const chunk = result.chunks[i];
+                    chunk.timestamp = [chunk.timestamp[0] - 0.3, chunk.timestamp[1] - 0.3];
+                }
+
+                outputPre.innerText = JSON.stringify(result, null, 2);
+                statusDiv.innerText = 'Transcription complete!';
+            } catch (error) {
+                console.error(error);
+                outputPre.innerText = 'An error occurred during decoding or processing.';
+                statusDiv.innerText = 'Transcription failed.';
+            } finally {
+                transcribeBtn.disabled = false;
+                const endTime = performance.now();
+                console.log(`Processing time: ${endTime - startTime} ms`);
+            }
+        });
+    </script>
+</body>
+</html>
