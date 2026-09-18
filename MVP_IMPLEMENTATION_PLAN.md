@@ -19,6 +19,8 @@ This document is the implementation checklist for the local-first MVP. Update ea
 - [x] Classes are created only through static `fromObject()` factories; application code never calls `new` directly.
 - [x] Keep `app.js` as a composition root; put routing, playback, and view rendering in their own modules.
 - [x] Build application DOM only through `Utils.buildDOM()` or `Utils.ui` helpers; never use raw HTML injection.
+- [x] Keep package and selection state in one shared application store so views update without reloads.
+- [x] Keep playlist creation/deletion in Library; Editor edits only the selected playlist.
 
 ## Data model and storage
 
@@ -60,7 +62,7 @@ This document is the implementation checklist for the local-first MVP. Update ea
 
 - [x] Implement minimal single-page navigation.
 - [x] Implement Library view.
-- [x] Implement Playlist Editor JSON workflow.
+- [x] Implement the UI-driven Playlist Editor workflow.
 - [x] Implement Player view.
 - [x] Add minimal functional error/status messaging.
 
@@ -86,6 +88,6 @@ This document is the implementation checklist for the local-first MVP. Update ea
 - [x] Add pre-recorded audio attachment and preview controls.
 - [x] Add paragraph parsing/editing and numbering controls.
 - [x] Add processing, locking, warnings, and reprocessing controls.
-- [x] Add paragraph playback selection controls.
+- [x] Add per-paragraph playback checkboxes, Enable all, and Disable all controls for TTS and audio items.
 - [x] Add save/revert/dirty-state workflow.
 - [ ] Verify component destruction and event-listener cleanup in a browser.

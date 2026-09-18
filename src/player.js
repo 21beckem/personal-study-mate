@@ -43,6 +43,7 @@ export class PlayerController {
   }
 
   speak(item, callbacks) { this.tts.speak(item.text, callbacks); }
+  speakText(text, callbacks) { this.tts.speak(text, callbacks); }
   pauseSpeech() { this.tts.pause(); }
   resumeSpeech() { this.tts.resume(); }
   stopSpeech() { this.tts.stop(); }

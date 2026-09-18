@@ -53,7 +53,7 @@ export class TranscriptAligner {
         gapStart = -1;
       }
     }
-    const results = paragraphs.map((paragraph) => Paragraph.fromObject({ id: paragraph.id, number: paragraph.number, text: paragraph.text, words: [] }));
+    const results = paragraphs.map((paragraph) => Paragraph.fromObject({ id: paragraph.id, number: paragraph.number, text: paragraph.text, play: paragraph.play, words: [] }));
     paragraphWords.forEach((word, globalIndex) => results[word.paragraphIndex].words.push(WordTiming.fromObject({ text: word.raw, ...interpolated[globalIndex] })));
     results.forEach((paragraph) => {
       paragraph.start = paragraph.words[0]?.start || 0;

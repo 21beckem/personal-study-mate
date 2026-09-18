@@ -24,7 +24,7 @@ export class WordTiming {
 }
 
 export class Paragraph {
-  constructor({ id, number = null, text, start = 0, end = 0, words = [] }, token) {
+  constructor({ id, number = null, text, start = 0, end = 0, words = [], play = true }, token) {
     if (token !== CONSTRUCTION_TOKEN) throw new Error('Paragraph must be created with Paragraph.fromObject().');
     this.id = id;
     this.number = number;
@@ -32,6 +32,7 @@ export class Paragraph {
     this.start = Number.isFinite(start) ? start : 0;
     this.end = Number.isFinite(end) ? end : this.start;
     this.words = words;
+    this.play = Boolean(play);
   }
 
   static fromObject(value = {}) {
@@ -51,6 +52,7 @@ export class Paragraph {
       text: this.text,
       start: this.start,
       end: this.end,
+      play: this.play,
       words: this.words.map((word) => word.toObject()),
     };
   }
@@ -76,16 +78,21 @@ export class StudyItem {
 
   static fromObject(value = {}) {
     const text = String(value.text ?? '').trim();
-    const paragraphs = Array.isArray(value.paragraphs) && value.paragraphs.length
-      ? value.paragraphs.map((paragraph) => Paragraph.fromObject(paragraph))
-      : Paragraph.splitText(text);
+    const legacySelection = value.playbackSelection ? PlaybackSelection.fromObject(value.playbackSelection) : null;
+    const rawParagraphs = Array.isArray(value.paragraphs) && value.paragraphs.length ? value.paragraphs : null;
+    const paragraphs = rawParagraphs ? rawParagraphs.map((paragraph) => Paragraph.fromObject(paragraph)) : Paragraph.splitText(text);
+    const migratedParagraphs = paragraphs.map((paragraph, index) => {
+      const rawParagraph = rawParagraphs?.[index];
+      const play = typeof rawParagraph?.play === 'boolean' ? rawParagraph.play : (legacySelection ? legacySelection.playAll || legacySelection.paragraphIds.includes(paragraph.id) : true);
+      return Paragraph.fromObject({ ...paragraph.toObject(), play });
+    });
     return new StudyItem({
       ...value,
       id: value.id || makeId('item'),
       type: value.type === 'tts' ? 'tts' : 'audio',
       title: String(value.title || 'Untitled item'),
       text,
-      paragraphs,
+      paragraphs: migratedParagraphs,
       status: value.status || 'draft',
       processing: value.processing ? ProcessingMetadata.fromObject(value.processing) : null,
       playbackSelection: value.playbackSelection ? PlaybackSelection.fromObject(value.playbackSelection) : null,

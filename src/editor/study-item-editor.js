@@ -4,7 +4,6 @@ import { EditorEvent } from './editor-events.js';
 import { Utils } from '../utils.js';
 import { AudioAttachmentControl } from './audio-attachment.js';
 import { ParagraphEditor } from './paragraph-editor.js';
-import { PlaybackSelectionEditor } from './playback-selection-editor.js';
 import { ProcessingPanel } from './processing-panel.js';
 
 const CONSTRUCTION_TOKEN = Symbol('study-item-editor-construction-token');
@@ -39,7 +38,6 @@ export class StudyItemEditor extends EventEmitterMixin(DOMElement) {
       this.#loadAttachment(audio);
       const processing = ProcessingPanel.fromObject({ item: this.item, getAttachment: this.getAttachment, processor: this.processor }); this.children.push(processing); this.#wireProcessing(processing); this.node.append(processing.node);
     }
-    const selection = PlaybackSelectionEditor.fromObject({ item: this.item }); this.children.push(selection); selection.on('changed', (event) => { this.item = StudyItem.fromObject({ ...this.item.toObject(), playbackSelection: event.entity }); this.emit('changed', EditorEvent.fromObject({ kind: 'selection-changed', entity: this.item })); }); this.node.append(selection.node);
     if (parent) parent.append(this.node);
   }
 

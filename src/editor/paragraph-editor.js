@@ -24,8 +24,14 @@ export class ParagraphEditor extends EventEmitterMixin(DOMElement) {
     const locked = this.item.status === 'ready';
     const text = Utils.ui.textarea('Canonical text'); text.value = this.item.text; text.disabled = locked;
     const parse = Utils.ui.button('Parse text into paragraphs'); parse.disabled = locked;
+    const add = Utils.ui.button('Add paragraph'); add.disabled = locked;
+    const enableAll = Utils.ui.button('Enable all');
+    const disableAll = Utils.ui.button('Disable all');
     this.addDOMEventListener(parse, 'click', () => this.emit('text-changed', EditorEvent.fromObject({ kind: 'item-text-changed', message: text.value })));
-    this.node.append(Utils.ui.label('Canonical text'), text, parse);
+    this.addDOMEventListener(add, 'click', () => this.emit('paragraphs-changed', EditorEvent.fromObject({ kind: 'paragraphs-changed', entity: [...this.item.paragraphs, Paragraph.fromObject({ text: '' })] })));
+    this.addDOMEventListener(enableAll, 'click', () => this.#setAllPlayable(true));
+    this.addDOMEventListener(disableAll, 'click', () => this.#setAllPlayable(false));
+    this.node.append(Utils.ui.label('Canonical text'), text, parse, add, enableAll, disableAll);
     const list = Utils.buildDOM(['div', { class: 'paragraph-list' }]); this.node.append(list);
     this.item.paragraphs.forEach((paragraph, index) => this.#addParagraph(list, paragraph, index, locked));
     if (parent) parent.append(this.node);
@@ -33,15 +39,18 @@ export class ParagraphEditor extends EventEmitterMixin(DOMElement) {
 
   #addParagraph(list, paragraph, index, locked) {
     const row = Utils.buildDOM(['div', { class: 'paragraph-row' }]);
+    const play = Utils.ui.checkbox('Play'); play.input.checked = paragraph.play;
     const number = Utils.ui.input('number'); number.value = paragraph.number ?? ''; number.disabled = locked;
     const text = Utils.ui.textarea('Paragraph text'); text.value = paragraph.text; text.disabled = locked;
     const up = Utils.ui.button('↑'); const down = Utils.ui.button('↓'); const remove = Utils.ui.button('Remove');
     up.disabled = locked || index === 0; down.disabled = locked || index === this.item.paragraphs.length - 1; remove.disabled = locked;
-    const update = () => { const paragraphs = this.item.paragraphs.map((entry, entryIndex) => entryIndex === index ? Paragraph.fromObject({ ...entry.toObject(), number: number.value ? Number(number.value) : null, text: text.value }) : entry); this.emit('paragraphs-changed', EditorEvent.fromObject({ kind: 'paragraphs-changed', entity: paragraphs })); };
-    this.addDOMEventListener(number, 'change', update); this.addDOMEventListener(text, 'change', update);
+    const update = () => { const paragraphs = this.item.paragraphs.map((entry, entryIndex) => entryIndex === index ? Paragraph.fromObject({ ...entry.toObject(), number: number.value ? Number(number.value) : null, text: text.value, play: play.input.checked }) : entry); this.emit('paragraphs-changed', EditorEvent.fromObject({ kind: 'paragraphs-changed', entity: paragraphs })); };
+    this.addDOMEventListener(play.input, 'change', update); this.addDOMEventListener(number, 'change', update); this.addDOMEventListener(text, 'change', update);
     this.addDOMEventListener(up, 'click', () => this.emit('move', EditorEvent.fromObject({ kind: 'paragraph-move', entity: ParagraphMove.fromObject({ from: index, to: index - 1 }) })));
     this.addDOMEventListener(down, 'click', () => this.emit('move', EditorEvent.fromObject({ kind: 'paragraph-move', entity: ParagraphMove.fromObject({ from: index, to: index + 1 }) })));
     this.addDOMEventListener(remove, 'click', () => this.emit('remove', EditorEvent.fromObject({ kind: 'paragraph-remove', entity: paragraph })));
-    row.append(Utils.ui.label('No.', number), text, up, down, remove); list.append(row);
+    row.append(play, Utils.ui.label('Paragraph number'), number, text, up, down, remove); list.append(row);
   }
+
+  #setAllPlayable(play) { this.emit('paragraphs-changed', EditorEvent.fromObject({ kind: 'paragraphs-changed', entity: this.item.paragraphs.map((paragraph) => Paragraph.fromObject({ ...paragraph.toObject(), play })) })); }
 }

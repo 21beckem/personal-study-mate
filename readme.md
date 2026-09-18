@@ -39,17 +39,17 @@ Open [http://localhost:8000](http://localhost:8000) in Chrome or Edge.
 
 The first transcription may download the browser model. No user audio or text is sent to an application server.
 
-The Playlist Editor is UI-driven: create playlists, add TTS or pre-recorded items, attach audio, enter canonical text, split/edit paragraphs, process recordings, and save changes locally. JSON is no longer used as the normal editing interface.
+The Playlist Editor is UI-driven: create playlists, add TTS or pre-recorded items, attach audio, enter canonical text, split/edit paragraphs, choose which paragraphs play, process recordings, and save changes locally. JSON import/export remains available for backup and migration, but is no longer the normal editing interface.
 
 ## Use the MVP
 
-1. Open **Playlist Editor**.
-2. Paste a version 1 package JSON into the text area.
-3. Select local audio files whose names match `audioFileName` values in the JSON.
-4. Click **Save Package**.
-5. Open the playlist in **Player**.
-6. For pre-recorded items, click **Process / Reprocess** to transcribe and align the audio.
-7. For TTS items, use the browser speech controls.
+1. Open **Library** and create a playlist.
+2. Press **Edit** on a playlist to open its editor.
+3. Add TTS or pre-recorded items. For audio, attach the local recording and enter its canonical text.
+4. Split the text into paragraphs, assign optional paragraph numbers, and enable or disable paragraphs as needed.
+5. For pre-recorded items, process the recording in the editor to transcribe and align it.
+6. Save the playlist, then open it in **Player**.
+7. Use the browser speech controls for TTS items or the audio controls for recordings.
 
 The data model and import boundary are intentionally ready for a future scraping extension, but the extension is not part of the MVP.
 

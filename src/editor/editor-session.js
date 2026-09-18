@@ -1,16 +1,17 @@
 import { EventEmitterMixin } from '../modules.js';
-import { AudioAttachment, Paragraph, PlaybackSelection, Playlist, StudyItem, StudyPackage } from '../models.js';
+import { AudioAttachment, Paragraph, Playlist, StudyItem, StudyPackage } from '../models.js';
 import { EditorEvent } from './editor-events.js';
 
 const CONSTRUCTION_TOKEN = Symbol('editor-session-construction-token');
 
 export class PlaylistEditorSession extends EventEmitterMixin(Object) {
-  constructor({ packageData, database }, token) {
+  constructor({ packageData, database, store, activePlaylistId }, token) {
     super();
     if (token !== CONSTRUCTION_TOKEN) throw new Error('PlaylistEditorSession must be created with PlaylistEditorSession.fromObject().');
     this.packageData = packageData;
     this.database = database;
-    this.activePlaylistId = packageData.playlists[0]?.id || null;
+    this.store = store;
+    this.activePlaylistId = activePlaylistId || packageData.playlists[0]?.id || null;
     this.activeItemId = this.activePlaylist?.itemIds[0] || null;
     this.attachments = new Map();
     this.dirty = false;
@@ -107,7 +108,14 @@ export class PlaylistEditorSession extends EventEmitterMixin(Object) {
   }
 
   updateParagraphs(item, paragraphs) {
-    this.updateItem(StudyItem.fromObject({ ...item.toObject(), paragraphs, status: 'draft', processing: null, playbackSelection: null }));
+    const preservesProcessing = item.paragraphs.length === paragraphs.length && item.paragraphs.every((previous, index) => sameParagraphContent(previous, paragraphs[index]));
+    this.updateItem(StudyItem.fromObject({
+      ...item.toObject(),
+      paragraphs,
+      status: preservesProcessing ? item.status : 'draft',
+      processing: preservesProcessing ? item.processing?.toObject() || null : null,
+      playbackSelection: null,
+    }));
   }
 
   attachAudio(item, attachment) {
@@ -118,10 +126,6 @@ export class PlaylistEditorSession extends EventEmitterMixin(Object) {
   removeAudio(item) {
     this.attachments.delete(item.id);
     this.updateItem(StudyItem.fromObject({ ...item.toObject(), audioFileName: '', audioBlobId: null, status: 'draft', processing: null }));
-  }
-
-  updateSelection(item, selection) {
-    this.updateItem(StudyItem.fromObject({ ...item.toObject(), playbackSelection: selection instanceof PlaybackSelection ? selection : PlaybackSelection.fromObject(selection) }));
   }
 
   reorderItems(itemIds) {
@@ -139,6 +143,7 @@ export class PlaylistEditorSession extends EventEmitterMixin(Object) {
 
   async revert() {
     this.packageData = await this.database.readPackage();
+    this.store.replacePackage(this.packageData);
     this.activePlaylistId = this.packageData.playlists[0]?.id || null;
     this.activeItemId = this.activePlaylist?.itemIds[0] || null;
     this.attachments.clear();
@@ -146,6 +151,22 @@ export class PlaylistEditorSession extends EventEmitterMixin(Object) {
     this.emit('reverted', EditorEvent.fromObject({ kind: 'reverted', entity: this.packageData }));
   }
 
-  #replacePackage(packageData) { this.packageData = packageData; }
+  #replacePackage(packageData) { this.packageData = packageData; this.store.replacePackage(packageData); }
   #markDirty() { if (!this.dirty) { this.dirty = true; this.emit('dirty-changed', EditorEvent.fromObject({ kind: 'dirty-changed', entity: this.packageData })); } }
 }
+
+const sameParagraphContent = (left, right) => left && right
+  && left.id === right.id
+  && left.number === right.number
+  && left.text === right.text
+  && left.start === right.start
+  && left.end === right.end
+  && left.words.length === right.words.length
+  && left.words.every((word, index) => {
+    const other = right.words[index];
+    return other
+      && word.text === other.text
+      && word.start === other.start
+      && word.end === other.end
+      && word.interpolated === other.interpolated;
+  });

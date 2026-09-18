@@ -46,7 +46,7 @@ export class Utils {
         select: () => Utils.buildDOM(['select']),
         option: (label, value) => Utils.buildDOM(['option', { value: String(value) }, label]),
         checkbox: (label) => {
-            const wrapper = Utils.buildDOM(['label']);
+            const wrapper = Utils.buildDOM(['label', { style: 'display: flex; gap: 0.25em;' }]);
             const input = Utils.buildDOM(['input', { type: 'checkbox' }]);
             const text = Utils.buildDOM(['span', label]);
             wrapper.append(input, text);
