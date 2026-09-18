@@ -1,0 +1,213 @@
+import { DOMElement, EventEmitterMixin } from '../modules.js';
+import { StudyItem } from '../models.js';
+import { PlaylistEditorSession } from '../editor/editor-session.js';
+import { StudyItemProcessor } from '../editor/item-processor.js';
+import { PlaylistSelector } from '../editor/playlist-selector.js';
+import { PlaylistDetailsForm } from '../editor/playlist-details-form.js';
+import { ItemList } from '../editor/item-list.js';
+import { StudyItemEditor } from '../editor/study-item-editor.js';
+import { EditorToolbar } from '../editor/editor-toolbar.js';
+import { Utils } from '../utils.js';
+
+const CONSTRUCTION_TOKEN = Symbol('playlist-editor-view-construction-token');
+
+export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
+  constructor({ target, packageData, database, aligner, onStatus }, token) {
+    super();
+    if (token !== CONSTRUCTION_TOKEN)
+      throw new Error('PlaylistEditorView must be created with PlaylistEditorView.fromObject().');
+    this.target = target;
+    this.database = database;
+    this.onStatus = onStatus;
+    this.session = PlaylistEditorSession.fromObject({
+      packageData,
+      database
+    });
+    this.processor = StudyItemProcessor.fromObject({
+      aligner
+    });
+    this.children = [];
+    this.sessionListeners = [];
+  }
+
+  static fromObject(value) {
+    return new PlaylistEditorView(value, CONSTRUCTION_TOKEN);
+  }
+
+  render() {
+    this.node = Utils.buildDOM(['div', {
+      class: 'playlist-editor'
+    }]);
+    Utils.buildDOM(['h2', 'Playlist Editor'], this.node);
+    const toolbar = EditorToolbar.fromObject({
+      dirty: this.session.dirty
+    });
+    this.children.push(toolbar);
+    this.node.append(toolbar.node);
+    const columns = Utils.buildDOM(['div', {
+      class: 'editor-columns'
+    }]);
+    this.node.append(columns);
+    const left = Utils.buildDOM(['div', {
+      class: 'editor-sidebar'
+    }]);
+    const right = Utils.buildDOM(['div', {
+      class: 'editor-main'
+    }]);
+    columns.append(left, right);
+    const selector = PlaylistSelector.fromObject({
+      playlists: this.session.packageData.playlists,
+      activePlaylistId: this.session.activePlaylistId
+    });
+    const details = PlaylistDetailsForm.fromObject({
+      playlist: this.session.activePlaylist
+    });
+    const items = ItemList.fromObject({
+      items: this.session.activeItems,
+      activeItemId: this.session.activeItemId
+    });
+    const itemEditor = StudyItemEditor.fromObject({
+      item: this.session.activeItem,
+      getAttachment: (item) => this.session.getAttachment(item),
+      processor: this.processor
+    });
+    this.children.push(selector, details, items, itemEditor);
+    left.append(selector.node, details.node, items.node);
+    right.append(itemEditor.node);
+    this.#wire(toolbar, selector, details, items, itemEditor);
+    this.target.append(this.node);
+    return this;
+  }
+
+  #wire(toolbar, selector, details, items, itemEditor) {
+    this.#listen(this.session, 'dirty-changed', () => toolbar.setDirty(true));
+    this.#listen(this.session, 'save-completed', () => {
+      toolbar.setDirty(false);
+      this.onStatus('Playlist saved locally.');
+    }
+    );
+    this.#listen(this.session, 'reverted', () => {
+      toolbar.setDirty(false);
+      this.#refresh(selector, details, items, itemEditor);
+      this.onStatus('Unsaved changes reverted.');
+    }
+    );
+    this.#listen(selector, 'selected', (event) => {
+      this.session.selectPlaylist(event.entity.id);
+      this.#refresh(selector, details, items, itemEditor);
+    }
+    );
+    this.#listen(selector, 'create', () => {
+      this.session.createPlaylist();
+      this.#refresh(selector, details, items, itemEditor);
+    }
+    );
+    this.#listen(selector, 'delete', () => {
+      if (confirm('Delete the selected playlist?')) {
+        this.session.deleteActivePlaylist();
+        this.#refresh(selector, details, items, itemEditor);
+      }
+    }
+    );
+    this.#listen(details, 'changed', (event) => this.session.updatePlaylist(event.entity));
+    this.#listen(items, 'selected', (event) => {
+      this.session.selectItem(event.entity.id);
+      this.#refreshItem(items, itemEditor);
+    }
+    );
+    this.#listen(items, 'add', (event) => {
+      this.session.addItem(event.message);
+      this.#refresh(selector, details, items, itemEditor);
+    }
+    );
+    this.#listen(items, 'remove', (event) => {
+      if (confirm(`Remove ${event.entity.title}?`)) {
+        this.session.removeItem(event.entity.id);
+        this.#refresh(selector, details, items, itemEditor);
+      }
+    }
+    );
+    this.#listen(items, 'reorder', (event) => {
+      const ids = [...this.session.activePlaylist.itemIds];
+      const [moved] = ids.splice(event.entity.from, 1);
+      ids.splice(event.entity.to, 0, moved);
+      this.session.reorderItems(ids);
+      this.#refreshItemList(items);
+    }
+    );
+    this.#listen(itemEditor, 'changed', (event) => this.session.updateItem(event.entity));
+    this.#listen(itemEditor, 'text-changed', (event) => this.session.updateItemText(this.session.activeItem, event.message));
+    this.#listen(itemEditor, 'paragraphs-changed', (event) => this.session.updateParagraphs(this.session.activeItem, event.entity));
+    this.#listen(itemEditor, 'paragraph-move', (event) => {
+      const paragraphs = [...this.session.activeItem.paragraphs];
+      const [moved] = paragraphs.splice(event.entity.from, 1);
+      paragraphs.splice(event.entity.to, 0, moved);
+      this.session.updateParagraphs(this.session.activeItem, paragraphs);
+      this.#refreshItem(items, itemEditor);
+    }
+    );
+    this.#listen(itemEditor, 'paragraph-remove', (event) => {
+      this.session.updateParagraphs(this.session.activeItem, this.session.activeItem.paragraphs.filter((paragraph) => paragraph.id !== event.entity.id));
+      this.#refreshItem(items, itemEditor);
+    }
+    );
+    this.#listen(itemEditor, 'audio-attached', (event) => this.session.attachAudio(this.session.activeItem, event.entity));
+    this.#listen(itemEditor, 'audio-removed', () => this.session.removeAudio(this.session.activeItem));
+    this.#listen(itemEditor, 'processed', (event) => {
+      this.session.updateItem(event.entity);
+      this.#refreshItem(items, itemEditor);
+    }
+    );
+    this.#listen(itemEditor, 'unlock', (event) => {
+      this.session.updateItem(StudyItem.fromObject({
+        ...event.entity.toObject(),
+        status: 'draft',
+        processing: null
+      }));
+      this.#refreshItem(items, itemEditor);
+    }
+    );
+    this.#listen(toolbar, 'save', async () => {
+      try {
+        await this.session.save();
+      } catch (error) {
+        this.onStatus(error.message, true);
+      }
+    }
+    );
+    this.#listen(toolbar, 'revert', async () => {
+      if (!this.session.dirty || confirm('Revert unsaved changes?'))
+        await this.session.revert();
+    }
+    );
+  }
+
+  #refresh(selector, details, items, itemEditor) {
+    selector.setPlaylists(this.session.packageData.playlists, this.session.activePlaylistId);
+    details.setPlaylist(this.session.activePlaylist);
+    items.setItems(this.session.activeItems, this.session.activeItemId);
+    itemEditor.setItem(this.session.activeItem);
+  }
+  #refreshItem(items, itemEditor) {
+    items.setItems(this.session.activeItems, this.session.activeItemId);
+    itemEditor.setItem(this.session.activeItem);
+  }
+  #refreshItemList(items) {
+    items.setItems(this.session.activeItems, this.session.activeItemId);
+  }
+  #listen(source, event, listener) {
+    source.on(event, listener);
+    this.sessionListeners.push({
+      source,
+      event,
+      listener
+    });
+  }
+  destroy() {
+    this.sessionListeners.forEach(({ source, event, listener }) => source.off(event, listener));
+    this.children.forEach((child) => child.destroy());
+    this.processor.destroy();
+    this.session.destroy();
+    super.destroy();
+  }
+}
