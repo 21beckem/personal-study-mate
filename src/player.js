@@ -1,5 +1,5 @@
 import { LocalTranscriber } from './transcription.js';
-import { Utils } from './utils.js';
+import { AudioMediaSource, TtsMediaSource, buildAudioPlaybackSegments } from './media-player.js';
 
 const CONSTRUCTION_TOKEN = Symbol('player-construction-token');
 
@@ -10,23 +10,18 @@ export class PlayerController {
     this.aligner = aligner;
     this.tts = tts;
     this.status = status;
-    this.audio = null;
     this.transcriber = null;
   }
 
   static fromObject(value) { return new PlayerController(value, CONSTRUCTION_TOKEN); }
 
-  async loadAudio(item, controls) {
+  async createAudioSource(item) {
     const record = await this.database.getAudio(item.audioBlobId);
-    if (!record) { controls.textContent = 'Audio file is missing.'; return null; }
-    this.audio?.pause();
-    const audio = Utils.buildDOM(['audio', { controls: 'controls' }]);
-    audio.src = URL.createObjectURL(record.blob);
-    audio._studyBlob = record.blob;
-    this.audio = audio;
-    controls.append(audio);
-    return audio;
+    if (!record) throw new Error('Audio file is missing.');
+    return AudioMediaSource.fromObject({ blob: record.blob, segments: buildAudioPlaybackSegments(item) });
   }
+
+  createTtsSource(item) { return TtsMediaSource.fromObject({ tts: this.tts, paragraphs: item.paragraphs }); }
 
   async process(item, blob, onComplete) {
     try {
@@ -42,9 +37,4 @@ export class PlayerController {
     } catch (error) { this.status(error.message, true); }
   }
 
-  speak(item, callbacks) { this.tts.speak(item.text, callbacks); }
-  speakText(text, callbacks) { this.tts.speak(text, callbacks); }
-  pauseSpeech() { this.tts.pause(); }
-  resumeSpeech() { this.tts.resume(); }
-  stopSpeech() { this.tts.stop(); }
 }

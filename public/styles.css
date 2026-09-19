@@ -3,6 +3,8 @@ button, input, textarea { font: inherit; }
 button { margin: .2rem; padding: .35rem .6rem; }
 textarea { width: 100%; min-height: 18rem; box-sizing: border-box; }
 audio { width: 100%; }
+.media-player { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; }
+.media-player input[type="range"] { flex: 1; min-width: 12rem; }
 .word { cursor: pointer; }
 .word.current { background: yellow; }
 .paragraph.current { outline: 2px solid #ddd; }
