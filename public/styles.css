@@ -1,4 +1,4 @@
-body { font-family: system-ui, sans-serif; max-width: 900px; margin: 1rem auto; padding: 0 1rem; line-height: 1.4; }
+body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 1rem auto; padding: 0 1rem; line-height: 1.4; }
 button, input, textarea { font: inherit; }
 button { margin: .2rem; padding: .35rem .6rem; }
 textarea { width: 100%; min-height: 18rem; box-sizing: border-box; }

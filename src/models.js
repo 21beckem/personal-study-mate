@@ -117,8 +117,9 @@ export class StudyItem {
 }
 
 export class AudioAttachment {
-  constructor({ blob, fileName, mimeType = '', size = 0 }, token) {
+  constructor({ id = null, blob, fileName, mimeType = '', size = 0 }, token) {
     if (token !== CONSTRUCTION_TOKEN) throw new Error('AudioAttachment must be created with AudioAttachment.fromObject().');
+    this.id = id;
     this.blob = blob;
     this.fileName = String(fileName || 'audio');
     this.mimeType = String(mimeType || blob?.type || '');
@@ -126,6 +127,36 @@ export class AudioAttachment {
   }
 
   static fromObject(value = {}) { return new AudioAttachment(value, CONSTRUCTION_TOKEN); }
+
+  toObject() {
+    return { id: this.id, fileName: this.fileName, mimeType: this.mimeType, size: this.size, blob: this.blob };
+  }
+}
+
+export class PackageBundle {
+  constructor({ studyPackage, attachments = [] }, token) {
+    if (token !== CONSTRUCTION_TOKEN) throw new Error('PackageBundle must be created with PackageBundle.fromObject().');
+    this.studyPackage = studyPackage;
+    this.attachments = attachments;
+  }
+
+  static fromObject(value = {}) {
+    const rawPackage = value.studyPackage || value;
+    const rawAttachments = value.attachments || value.audio || [];
+    const attachments = Array.isArray(rawAttachments)
+      ? rawAttachments.map((attachment) => AudioAttachment.fromObject(attachment))
+      : [];
+    return new PackageBundle({ studyPackage: StudyPackage.fromObject(rawPackage), attachments }, CONSTRUCTION_TOKEN);
+  }
+
+  getAttachment(id) { return this.attachments.find((attachment) => attachment.id === id) || null; }
+
+  toObject() {
+    return {
+      studyPackage: this.studyPackage.toObject(),
+      attachments: this.attachments.map((attachment) => attachment.toObject()),
+    };
+  }
 }
 
 export class PlaybackSelection {

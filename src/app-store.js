@@ -49,6 +49,13 @@ export class AppStore extends EventEmitterMixin(Object) {
     this.emit('saved', this);
   }
 
+  async importBundle(bundle) {
+    await this.database.putBundle(bundle);
+    await this.reload();
+    const playlist = bundle.studyPackage.playlists[0];
+    if (playlist) this.selectPlaylist(playlist.id);
+  }
+
   async deletePlaylist(id) {
     await this.database.deletePlaylist(id);
     this.packageData = await this.database.readPackage();

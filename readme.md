@@ -51,14 +51,26 @@ The Playlist Editor is UI-driven: create playlists, add TTS or pre-recorded item
 6. Save the playlist, then open it in **Player**.
 7. Use the browser speech controls for TTS items or the audio controls for recordings.
 
-The data model and import boundary are intentionally ready for a future scraping extension, but the extension is not part of the MVP.
+The data model supports version 2 package files containing playlist metadata, study items, paragraphs, and embedded audio. Use **Export package** and **Import package** in the Library to move a complete playlist between browser profiles.
+
+## Gospel Library collector extension
+
+The optional Manifest V3 extension is in [`extension/`](extension/). To use it during local development:
+
+1. Run the app with `python -m http.server 8000`.
+2. Open `chrome://extensions` or `edge://extensions`.
+3. Enable **Developer mode**, choose **Load unpacked**, and select the `extension` folder.
+4. Refresh the Personal Study Mate page.
+5. In Library, paste the assignment list into the collector panel and choose **Collect assignments**.
+
+The extension opens approved ChurchofJesusChrist.org and legacy lds.org pages in inactive tabs, extracts article or scripture paragraphs, downloads available audio, and streams the results back to the web app. The web app normalizes the collected data, processes audio locally, and stores the final playlist in IndexedDB.
 
 ## JSON shape
 
 ```json
 {
   "format": "personal-study-mate",
-  "version": 1,
+  "version": 2,
   "playlists": [{
     "title": "My study playlist",
     "items": [{
@@ -66,7 +78,8 @@ The data model and import boundary are intentionally ready for a future scraping
       "title": "Reading assignment",
       "text": "Text to read aloud."
     }]
-  }]
+  }],
+  "audio": []
 }
 ```
 

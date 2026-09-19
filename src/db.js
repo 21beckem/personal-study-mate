@@ -1,4 +1,4 @@
-import { Playlist, StudyItem, StudyPackage } from './models.js';
+import { PackageBundle, Playlist, StudyItem, StudyPackage } from './models.js';
 
 const DB_NAME = 'personal-study-mate';
 const DB_VERSION = 1;
@@ -29,6 +29,17 @@ export class LocalDatabase {
     const transaction = this.database.transaction(['playlists', 'items'], 'readwrite');
     studyPackage.playlists.forEach((playlist) => transaction.objectStore('playlists').put(playlist.toObject()));
     studyPackage.items.forEach((item) => transaction.objectStore('items').put(item.toObject()));
+    await this.#complete(transaction);
+  }
+
+  async putBundle(bundle) {
+    const normalized = PackageBundle.fromObject(bundle);
+    const transaction = this.database.transaction(['playlists', 'items', 'audio'], 'readwrite');
+    normalized.studyPackage.playlists.forEach((playlist) => transaction.objectStore('playlists').put(playlist.toObject()));
+    normalized.studyPackage.items.forEach((item) => transaction.objectStore('items').put(item.toObject()));
+    normalized.attachments.forEach((attachment) => {
+      if (attachment.id && attachment.blob) transaction.objectStore('audio').put({ id: attachment.id, blob: attachment.blob, fileName: attachment.fileName });
+    });
     await this.#complete(transaction);
   }
 
