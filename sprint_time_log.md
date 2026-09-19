@@ -27,9 +27,9 @@ The expected minimum amount of time each Sprint for each category is as follows:
 |Date      |Start Time|Category|Description                                 |Total Minutes|
 |:--------:|:--------:|:------:|--------------------------------------------|:-----------:|
 | Class Days | 11:30 | MTG | I showed up every day and am too lazy to put in each day as its own row :) | 240 |
-| 09/18 | 10:30 | IM | I went back and forth with several AI agents to come up with what is possible and come up with a plan for how to do it. | 300 |
-| 9/19 | 1:30 | IM | Made the bones of the project, got simple playlists working that are editable and stored locally. | 210 |
-|  |  |  |  |  |
+| 9/17 | 10:30 | IM | I went back and forth with several AI agents to come up with what is possible and come up with a plan for how to do it. | 300 |
+| 9/18 | 1:30 | IM | Made the bones of the project, got simple playlists working that are editable and stored locally. | 210 |
+| 9/19 | 2:00 | IM | Made the extension to scrape the content and auto-inject into the web-app. | 180 |
 |  |  |  |  |  |
 |  |  |  |  |  |
 |  |  |  |  |  |
