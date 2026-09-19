@@ -5,12 +5,12 @@
   "description": "Collect ChurchofJesusChrist.org study assignments for Personal Study Mate.",
   "permissions": ["tabs"],
   "host_permissions": [
-    "https://assets.churchofjesuschrist.org/*",
-    "https://broadcast.lds.org/*",
-    "https://www.churchofjesuschrist.org/*",
+    "https://lds.org/*",
+    "https://*.lds.org/*",
     "https://churchofjesuschrist.org/*",
-    "https://www.lds.org/*",
-    "https://lds.org/*"
+    "https://*.churchofjesuschrist.org/*",
+    "https://*.ldscdn.org/*",
+    "https://ldscdn.org/*"
   ],
   "background": {
     "service_worker": "service-worker.js",

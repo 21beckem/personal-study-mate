@@ -3,6 +3,20 @@ import { Utils } from '../utils.js';
 
 const CONSTRUCTION_TOKEN = Symbol('library-view-construction-token');
 
+const sanitizeClipboard = (html) => {
+  const parsed = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  parsed.querySelectorAll('script, iframe, object, embed, style, link, meta').forEach((element) => element.remove());
+  parsed.querySelectorAll('*').forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      if (attribute.name.toLowerCase().startsWith('on')) element.removeAttribute(attribute.name);
+      if (attribute.name.toLowerCase() === 'href' && /^\s*javascript:/i.test(attribute.value)) element.removeAttribute(attribute.name);
+    });
+  });
+  return [...parsed.body.childNodes].map((node) => document.importNode(node, true));
+};
+
+const serializeChildren = (element) => [...element.childNodes].map((node) => new XMLSerializer().serializeToString(node)).join('');
+
 export class LibraryView extends EventEmitterMixin(DOMElement) {
   constructor({ target, store, onNew, onOpen, onEdit, onDelete, onExport, onImport, extensionAvailable = false, onCollect }, token) {
     super();
@@ -40,11 +54,15 @@ export class LibraryView extends EventEmitterMixin(DOMElement) {
     Utils.buildDOM(['p', 'Paste the assignment list copied from your course page. Links to ChurchofJesusChrist.org will be collected in the background.'], section);
     const title = Utils.ui.input('text', 'Playlist title'); title.value = 'Collected assignments';
     const description = Utils.ui.input('text', 'Playlist description');
-    const pasted = Utils.ui.textarea('Paste the assignment list here');
+    const pasted = Utils.buildDOM(['div', { class: 'assignment-paste-area', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true' }]);
     const collect = Utils.ui.button('Collect assignments');
-    pasted.clipboardHtml = '';
-    this.addDOMEventListener(pasted, 'paste', (event) => { pasted.clipboardHtml = event.clipboardData?.getData('text/html') || ''; });
-    this.addDOMEventListener(collect, 'click', () => this.onCollect({ title: title.value, description: description.value, html: pasted.clipboardHtml || pasted.value, button: collect }));
+    this.addDOMEventListener(pasted, 'paste', (event) => {
+      const html = event.clipboardData?.getData('text/html') || '';
+      if (!html) return;
+      event.preventDefault();
+      pasted.replaceChildren(...sanitizeClipboard(html));
+    });
+    this.addDOMEventListener(collect, 'click', () => this.onCollect({ title: title.value, description: description.value, html: serializeChildren(pasted), button: collect }));
     section.append(title, description, pasted, collect); this.node.append(section);
   }
 

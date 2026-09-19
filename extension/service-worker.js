@@ -1,16 +1,7 @@
 const PROTOCOL_VERSION = 1;
 const CHUNK_BYTES = 512 * 1024;
 const allowedAppOrigins = new Set(['http://localhost:8000', 'http://127.0.0.1:8000', 'http://localhost:5500', 'http://127.0.0.1:5500']);
-const allowedHosts = ['churchofjesuschrist.org', 'lds.org'];
 const jobs = new Map();
-
-const isAllowedHost = (hostname) => allowedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
-const isAllowedUrl = (value) => {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && isAllowedHost(url.hostname.toLowerCase());
-  } catch { return false; }
-};
 
 const send = (port, message) => port.postMessage({ protocol: PROTOCOL_VERSION, ...message });
 
@@ -19,6 +10,13 @@ const bytesToBase64 = (bytes) => {
   const binaryChunkSize = 0x8000;
   for (let index = 0; index < bytes.length; index += binaryChunkSize) result += String.fromCharCode(...bytes.subarray(index, index + binaryChunkSize));
   return btoa(result);
+};
+
+const base64ToBytes = (value) => {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 };
 
 const fileNameFor = (url, mimeType) => {
@@ -55,12 +53,20 @@ const scrapeTab = async (tabId) => {
   throw lastError || new Error('Unable to communicate with the page scraper.');
 };
 
-const fetchAudio = async (audioUrl) => {
-  if (!audioUrl || !isAllowedUrl(audioUrl)) return null;
-  const response = await fetch(audioUrl);
-  if (!response.ok) throw new Error(`Audio request failed with ${response.status}.`);
-  const blob = await response.blob();
-  return { bytes: new Uint8Array(await blob.arrayBuffer()), mimeType: blob.type || 'audio/mpeg', fileName: fileNameFor(audioUrl, blob.type || '') };
+const fetchAudio = async (audioSource) => {
+  if (!audioSource?.url) return null;
+  if (audioSource.inline?.base64) {
+    const bytes = base64ToBytes(audioSource.inline.base64);
+    return { bytes, mimeType: audioSource.inline.mimeType || 'audio/mpeg', fileName: audioSource.inline.fileName || 'recording.mp3' };
+  }
+  try {
+    const response = await fetch(audioSource.url);
+    if (!response.ok) throw new Error(`Audio request failed with ${response.status}.`);
+    const blob = await response.blob();
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), mimeType: blob.type || 'audio/mpeg', fileName: fileNameFor(audioSource.url, blob.type || '') };
+  } catch (error) {
+    throw new Error(`Failed to fetch audio: ${error.message}`);
+  }
 };
 
 const sendAudio = async (port, job, requestId, audio) => {
@@ -84,15 +90,14 @@ const collect = async (port, request) => {
     for (let index = 0; index < assignments.length; index++) {
       if (job.cancelled) throw new Error('Collection cancelled.');
       const assignment = assignments[index];
-      if (!isAllowedUrl(assignment.url)) throw new Error(`Unsupported assignment URL: ${assignment.url}`);
       send(port, { type: 'item-start', jobId: job.id, requestId: assignment.id, title: assignment.label, sourceUrl: assignment.url });
       send(port, { type: 'job-progress', jobId: job.id, completed: index, total: assignments.length, message: `Opening ${assignment.label || assignment.url}` });
       const tab = await chrome.tabs.create({ url: assignment.url, active: false });
       try {
         const scraped = await scrapeTab(tab.id);
         let audio = null;
-        if (scraped.audioUrl) {
-          try { audio = await fetchAudio(scraped.audioUrl); } catch (error) { send(port, { type: 'item-error', jobId: job.id, requestId: assignment.id, message: `Audio unavailable: ${error.message}` }); }
+        if (scraped.audioSource) {
+          try { audio = await fetchAudio(scraped.audioSource); } catch (error) { send(port, { type: 'item-error', jobId: job.id, requestId: assignment.id, message: `Audio unavailable: ${error.message}` }); }
         }
         send(port, { type: 'item-metadata', jobId: job.id, requestId: assignment.id, title: scraped.title || assignment.label, sourceUrl: scraped.sourceUrl || assignment.url, paragraphs: scraped.paragraphs || [], audio: audio ? { fileName: audio.fileName, mimeType: audio.mimeType, size: audio.bytes.length } : null });
         await sendAudio(port, job, assignment.id, audio);

@@ -10,7 +10,7 @@ import { PlayerView } from './views/player-view.js';
 import { Utils } from './utils.js';
 import { AppStore } from './app-store.js';
 import { AudioAttachment, PackageBundle, Paragraph, Playlist, StudyItem, StudyPackage } from './models.js';
-import { AssignmentRequest } from './assignment-parser.js';
+import { AssignmentRequest, parseVerseSelection } from './assignment-parser.js';
 import { discoverExtensionId, ExtensionBridge } from './extension-bridge.js';
 import { StudyItemProcessor } from './editor/item-processor.js';
 
@@ -52,26 +52,35 @@ const importBundleFile = async (file) => {
 
 const collectAssignments = async ({ title, description, html, button }) => {
   const assignments = AssignmentRequest.parseClipboard(html);
-  if (!assignments.length) { status('No ChurchofJesusChrist.org assignment links were found.', true); return; }
+  if (!assignments.length) { status('No assignment links or inline reading text were found.', true); return; }
   button.disabled = true;
   try {
-    const result = await extensionBridge.collect({
+    const urlAssignments = assignments.filter((assignment) => assignment.kind === 'url');
+    const result = urlAssignments.length ? await extensionBridge.collect({
       playlist: { title: title || 'Collected assignments', description },
-      assignments,
+      assignments: urlAssignments,
       onProgress: (progress) => status(progress.message || `Collected ${progress.completed} of ${progress.total} assignments.`),
-    });
+    }) : { items: [] };
+    const collectedById = new Map(result.items.map((item) => [item.requestId, item]));
     const itemValues = [];
     const attachments = [];
     const itemIds = [];
-    for (const collected of result.items) {
+    for (const assignment of assignments) {
       const itemId = `item-${crypto.randomUUID()}`;
-      const paragraphs = collected.paragraphs.map((paragraph) => Paragraph.fromObject({ number: paragraph.number, text: paragraph.text }));
-      const attachment = collected.audio?.blob ? AudioAttachment.fromObject({ id: itemId, blob: collected.audio.blob, fileName: collected.audio.fileName, mimeType: collected.audio.mimeType, size: collected.audio.size }) : null;
+      const collected = assignment.kind === 'text' ? null : collectedById.get(assignment.id);
+      if (assignment.kind === 'url' && !collected) continue;
+      const selectedVerses = parseVerseSelection(assignment.label);
+      const hasVerseNumbers = collected?.paragraphs.some((paragraph) => Number.isInteger(paragraph.number));
+      const paragraphs = assignment.kind === 'text'
+        ? [Paragraph.fromObject({ text: assignment.text })]
+        : collected.paragraphs.map((paragraph) => Paragraph.fromObject({ number: paragraph.number, text: paragraph.text, play: !selectedVerses || !hasVerseNumbers || paragraph.number === null || selectedVerses.has(paragraph.number) }));
+      const attachment = collected?.audio?.blob ? AudioAttachment.fromObject({ id: itemId, blob: collected.audio.blob, fileName: collected.audio.fileName, mimeType: collected.audio.mimeType, size: collected.audio.size }) : null;
+      const titleForItem = assignment.kind === 'text' ? assignment.text.slice(0, 80) : collected.title;
       const item = StudyItem.fromObject({
         id: itemId,
         type: attachment ? 'audio' : 'tts',
-        title: collected.title,
-        sourceUrl: collected.sourceUrl,
+        title: titleForItem,
+        sourceUrl: collected?.sourceUrl || '',
         text: paragraphs.map((paragraph) => paragraph.text).join('\n\n'),
         paragraphs,
         audioBlobId: attachment ? itemId : null,

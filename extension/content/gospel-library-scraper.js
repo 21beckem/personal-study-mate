@@ -10,6 +10,13 @@ const waitFor = async (predicate, timeoutMs = 15000) => {
 
 const textOf = (element) => String(element?.innerText || '').replace(/\s+/g, ' ').trim();
 
+const bytesToBase64 = (bytes) => {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  return btoa(binary);
+};
+
 const titleOf = () => textOf(document.querySelector('article header h1, article header h2'))
   || document.querySelector('meta[property="og:title"]')?.content?.trim()
   || document.title.trim()
@@ -42,12 +49,18 @@ const scriptureParagraphs = () => {
   return [...headers, ...verses];
 };
 
-const audioUrlOf = async () => {
+const audioSourceOf = async () => {
   try {
     document.querySelector('button[class*="AudioPlayer"]')?.click();
     await new Promise((resolve) => setTimeout(resolve, 100));
     const audio = await waitFor(() => document.querySelector('audio')?.currentSrc, 2500);
-    return audio || null;
+    if (!audio) return null;
+    if (!audio.startsWith('blob:')) return { url: audio, inline: null };
+    try {
+      const response = await fetch(audio);
+      const blob = await response.blob();
+      return { url: audio, inline: { base64: bytesToBase64(new Uint8Array(await blob.arrayBuffer())), mimeType: blob.type || 'audio/mpeg', fileName: 'recording.mp3' } };
+    } catch { return { url: audio, inline: null }; }
   } catch {
     return null;
   }
@@ -60,7 +73,7 @@ const scrape = async () => {
     title: titleOf(),
     sourceUrl: location.href,
     paragraphs: isScripture ? scriptureParagraphs() : standardParagraphs(),
-    audioUrl: await audioUrlOf(),
+    audioSource: await audioSourceOf(),
   };
 };
 
