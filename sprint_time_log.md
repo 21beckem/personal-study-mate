@@ -25,16 +25,14 @@ The expected minimum amount of time each Sprint for each category is as follows:
 ## Time Log
 
 |Date      |Start Time|Category|Description                                 |Total Minutes|
-|----------|----------|:------:|--------------------------------------------|:-----------:|
-| Class Days | 11:30 | Class | I showed up every day and am too lazy to put in each day as its own row :) | 240 |
-| 09/18 | 10:30 | Plan/POC | I went back and forth with several AI agents to come up with what is possible and come up with a plan for how to do it. | 300 |
-|          |          |           |                                            |             |
-|          |          |           |                                            |             |
-|          |          |           |                                            |             |
-|          |          |           |                                            |             |
-|          |          |           |                                            |             |
-
-_Note: Add more rows as needed._
+|:--------:|:--------:|:------:|--------------------------------------------|:-----------:|
+| Class Days | 11:30 | MTG | I showed up every day and am too lazy to put in each day as its own row :) | 240 |
+| 09/18 | 10:30 | IM | I went back and forth with several AI agents to come up with what is possible and come up with a plan for how to do it. | 300 |
+| 9/19 | 1:30 | IM | Made the bones of the project, got simple playlists working that are editable and stored locally. | 210 |
+|  |  |  |  |  |
+|  |  |  |  |  |
+|  |  |  |  |  |
+|  |  |  |  |  |
 
 ## Sprint Totals
 
