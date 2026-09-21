@@ -1,6 +1,6 @@
 const PROTOCOL_VERSION = 1;
 const CHUNK_BYTES = 512 * 1024;
-const allowedAppOrigins = new Set(['http://localhost:8000', 'http://127.0.0.1:8000', 'http://localhost:5500', 'http://127.0.0.1:5500']);
+const allowedAppOrigins = new Set(['http://localhost:8000', 'http://localhost:5500', 'https://21beckem.github.io']);
 const jobs = new Map();
 
 const send = (port, message) => port.postMessage({ protocol: PROTOCOL_VERSION, ...message });

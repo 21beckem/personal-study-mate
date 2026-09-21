@@ -60,4 +60,15 @@ export class Utils {
         },
         status: () => Utils.buildDOM(['output', { role: 'status' }]),
     }}
+    static get warnBeforeClosing() {
+        return {
+            enable: () => window.addEventListener('beforeunload', INTERNAL_warnBeforeClosing),
+            disable: () => window.removeEventListener('beforeunload', INTERNAL_warnBeforeClosing)
+        }
+    }
+}
+
+function INTERNAL_warnBeforeClosing(event) {
+  event.preventDefault();
+  event.returnValue = '';
 }

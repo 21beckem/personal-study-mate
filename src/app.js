@@ -54,6 +54,7 @@ const collectAssignments = async ({ title, description, html, button }) => {
   const assignments = AssignmentRequest.parseClipboard(html);
   if (!assignments.length) { status('No assignment links or inline reading text were found.', true); return; }
   button.disabled = true;
+  Utils.warnBeforeClosing.enable();
   try {
     const urlAssignments = assignments.filter((assignment) => assignment.kind === 'url');
     const result = urlAssignments.length ? await extensionBridge.collect({
@@ -106,6 +107,7 @@ const collectAssignments = async ({ title, description, html, button }) => {
     const playlist = Playlist.fromObject({ title: title || 'Collected assignments', description, itemIds });
     const bundle = PackageBundle.fromObject({ studyPackage: StudyPackage.fromObject({ playlists: [playlist], items: finalItems }), attachments });
     await store.importBundle(codec.importAsNew(bundle));
+    Utils.warnBeforeClosing.disable();
     status(`Collected ${finalItems.length} assignment(s) into “${playlist.title}”.`);
     navigate('library');
   } catch (error) { status(error.message, true); }
