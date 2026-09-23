@@ -370,9 +370,12 @@ export class MediaPlayer extends EventEmitterMixin(DOMElement) {
 
   #bindEvents() {
     this.addDOMEventListener(this.playButton, 'click', () => {
-      if (this.source.playing) this.source.pause();
-      else this.source.play();
-      this.#updatePlayLabel();
+      if (this.source.playing) {
+        this.source.pause();
+        this.#updatePlayLabel();
+        return;
+      }
+      Promise.resolve(this.source.play()).finally(() => this.#updatePlayLabel());
     });
     this.addDOMEventListener(this.slider, 'input', () => this.source.seek(Number(this.slider.value)));
     this.addDOMEventListener(this.backButton, 'click', () => this.onPrevious());
@@ -402,7 +405,12 @@ export class MediaPlayer extends EventEmitterMixin(DOMElement) {
     this.emit('timeupdate', event);
   }
 
-  #updatePlayLabel() { this.playButton.textContent = this.source.playing ? 'Pause' : 'Play'; }
+  #updatePlayLabel() {
+    const playing = Boolean(this.source.playing);
+    this.playButton.textContent = playing ? 'Pause' : 'Play';
+    this.playButton.classList.toggle('is-playing', playing);
+    this.playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  }
 
   setNavigation({ canPrevious = false, canNext = false } = {}) {
     this.backButton.disabled = !canPrevious;
@@ -411,8 +419,8 @@ export class MediaPlayer extends EventEmitterMixin(DOMElement) {
 
   seekToSourceTime(time) { this.source.seekToSourceTime?.(time); }
   seekToCharacter(index) { this.source.seekToCharacter?.(index); }
-  play() { return this.source.play(); }
-  pause() { this.source.pause(); }
+  play() { return Promise.resolve(this.source.play()).finally(() => this.#updatePlayLabel()); }
+  pause() { this.source.pause(); this.#updatePlayLabel(); }
   get currentTime() { return this.source.currentTime; }
   get duration() { return this.source.duration; }
 

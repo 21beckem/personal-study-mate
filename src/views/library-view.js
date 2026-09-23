@@ -29,23 +29,44 @@ export class LibraryView extends EventEmitterMixin(DOMElement) {
   render() {
     const parent = this.node?.parentNode || this.target;
     if (this.node) this.reset();
-    this.node = Utils.buildDOM(['div', { class: 'library-view' }]);
-    Utils.buildDOM(['h2', 'Library'], this.node);
-    const newButton = Utils.ui.button('New playlist'); const exportButton = Utils.ui.button('Export package'); const importButton = Utils.ui.button('Import package');
+    this.node = Utils.buildDOM(['section', { class: 'app-screen screen-library' }]);
+    const header = Utils.buildDOM(['header', { class: 'screen-header' }]);
+    Utils.buildDOM(['h1', 'Library'], header);
+    const newButton = Utils.ui.button('New playlist'); newButton.className = 'text-button';
+    newButton.prepend(Utils.buildDOM(['i', { class: 'fa-solid fa-plus', 'aria-hidden': 'true' }]));
+    const exportButton = Utils.ui.button('Export package'); exportButton.className = 'text-button utility-button';
+    const importButton = Utils.ui.button('Import package'); importButton.className = 'text-button utility-button';
     this.addDOMEventListener(newButton, 'click', this.onNew); this.addDOMEventListener(exportButton, 'click', this.onExport);
     const importInput = Utils.ui.input('file'); importInput.accept = '.json,application/json'; importInput.hidden = true;
     this.addDOMEventListener(importButton, 'click', () => importInput.click()); this.addDOMEventListener(importInput, 'change', () => { if (importInput.files[0]) this.onImport(importInput.files[0]); importInput.value = ''; });
-    this.node.append(newButton, exportButton, importButton, importInput);
+    header.append(newButton, exportButton, importButton, importInput); this.node.append(header);
     if (this.extensionAvailable) this.#renderCollector();
-    const list = Utils.buildDOM(['div', { class: 'library-list' }]); this.node.append(list);
+    const content = Utils.buildDOM(['div', { class: 'screen-content' }]);
+    const list = Utils.buildDOM(['div', { class: 'playlist-list' }]); content.append(list); this.node.append(content);
     this.store.packageData.playlists.forEach((playlist) => {
-      const card = Utils.buildDOM(['section', { class: 'card' }]);
-      Utils.buildDOM(['h3', playlist.title], card); Utils.buildDOM(['p', `${playlist.itemIds.length} item(s)`], card);
-      const open = Utils.ui.button('Open in Player'); const edit = Utils.ui.button('Edit'); const remove = Utils.ui.button('Delete');
+      const card = Utils.buildDOM(['div', { class: 'playlist-row' }]);
+      const accent = Utils.buildDOM(['span', { class: 'playlist-row__accent accent-sage', 'aria-hidden': 'true' }]);
+      const body = Utils.buildDOM(['span', { class: 'playlist-row__body' }]);
+      Utils.buildDOM(['strong', playlist.title], body); Utils.buildDOM(['small', `${playlist.itemIds.length} item(s)`], body);
+      const actions = Utils.buildDOM(['span', { class: 'row-actions' }]);
+      const open = Utils.ui.button('Open in Player'); open.className = 'icon-button'; open.title = 'Open in Player'; open.setAttribute('aria-label', 'Open in Player'); open.append(Utils.buildDOM(['i', { class: 'fa-solid fa-play' }]));
+      const edit = Utils.ui.button('Edit'); edit.className = 'icon-button'; edit.title = 'Edit playlist'; edit.setAttribute('aria-label', 'Edit playlist'); edit.append(Utils.buildDOM(['i', { class: 'fa-solid fa-pen' }]));
+      const remove = Utils.ui.button('Delete'); remove.className = 'icon-button danger'; remove.title = 'Delete playlist'; remove.setAttribute('aria-label', 'Delete playlist'); remove.append(Utils.buildDOM(['i', { class: 'fa-solid fa-trash-can' }]));
       this.addDOMEventListener(open, 'click', () => this.onOpen(playlist.id)); this.addDOMEventListener(edit, 'click', () => this.onEdit(playlist.id)); this.addDOMEventListener(remove, 'click', () => this.onDelete(playlist.id));
-      card.append(open, edit, remove); list.append(card);
+      this.addDOMEventListener(body, 'click', () => this.onEdit(playlist.id));
+      actions.append(open, edit, remove); card.append(accent, body, actions); list.append(card);
     });
+    const nav = Utils.buildDOM(['nav', { class: 'bottom-nav', 'aria-label': 'Primary navigation' }]);
+    nav.append(this.#navLink('library', 'folder', 'Library', true), this.#navLink('player', 'play', 'Player'), this.#navLink('pins', 'thumbtack', 'Pins'));
+    this.node.append(nav);
     parent.append(this.node);
+  }
+
+  #navLink(view, icon, label, active = false) {
+    const link = Utils.buildDOM(['button', { class: `bottom-nav__item${active ? ' is-active' : ''}` }]);
+    link.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: `fa-solid fa-${icon}` }])]), document.createTextNode(label));
+    if (view !== 'pins') this.addDOMEventListener(link, 'click', () => view === 'library' ? null : this.onOpen(this.store.activePlaylistId));
+    return link;
   }
 
   #renderCollector() {

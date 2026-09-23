@@ -3,7 +3,7 @@ import { Paragraph, StudyItem } from '../models.js';
 import { EditorEvent } from './editor-events.js';
 import { Utils } from '../utils.js';
 import { AudioAttachmentControl } from './audio-attachment.js';
-import { ParagraphEditor } from './paragraph-editor.js';
+import { ParagraphEditor } from './paragraph-editor.js?ui=2';
 import { ProcessingPanel } from './processing-panel.js';
 
 const CONSTRUCTION_TOKEN = Symbol('study-item-editor-construction-token');
@@ -33,6 +33,9 @@ export class StudyItemEditor extends EventEmitterMixin(DOMElement) {
     this.node.append(Utils.ui.label('Title'), title, Utils.ui.label('Source URL'), source, Utils.ui.label('Type'), type);
 
     const paragraphs = ParagraphEditor.fromObject({ item: this.item }); this.children.push(paragraphs); this.#wireParagraphs(paragraphs); this.node.append(paragraphs.node);
+    const removeItem = Utils.ui.button('Remove item'); removeItem.className = 'wide-button wide-button--danger'; removeItem.prepend(Utils.buildDOM(['i', { class: 'fa-solid fa-trash-can' }]));
+    this.addDOMEventListener(removeItem, 'click', () => this.emit('remove-item', EditorEvent.fromObject({ kind: 'item-remove', entity: this.item })));
+    this.node.append(removeItem);
     if (this.item.type === 'audio') {
       const audio = AudioAttachmentControl.fromObject({ attachment: null }); this.children.push(audio); this.#wireAudio(audio); this.node.append(audio.node);
       this.#loadAttachment(audio);

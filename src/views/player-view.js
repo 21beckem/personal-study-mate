@@ -1,22 +1,24 @@
 import { DOMElement, EventEmitterMixin } from '../modules.js';
-import { MediaPlayer } from '../media-player.js';
+import { MediaPlayer } from '../media-player.js?ui=2';
 import { Utils } from '../utils.js';
 
 const CONSTRUCTION_TOKEN = Symbol('player-view-construction-token');
 
 export class PlayerView extends EventEmitterMixin(DOMElement) {
-  constructor({ target, store, controller, onItemChange }, token) {
+  constructor({ target, store, controller, onItemChange, onBack }, token) {
     super();
     if (token !== CONSTRUCTION_TOKEN) throw new Error('PlayerView must be created with PlayerView.fromObject().');
     this.target = target;
     this.store = store;
     this.controller = controller;
     this.onItemChange = onItemChange;
+    this.onBack = onBack;
     this.currentItemId = store.activeItemId;
     this.packageListener = () => this.render();
     this.store.on('package-changed', this.packageListener);
     this.mediaPlayer = null;
     this.renderVersion = 0;
+    this.activeWord = null;
   }
 
   static fromObject(value) { return new PlayerView(value, CONSTRUCTION_TOKEN); }
@@ -26,24 +28,39 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
     this.renderVersion++;
     this.#destroyMediaPlayer();
     if (this.node) this.reset();
-    this.node = Utils.buildDOM(['div', { class: 'player-view' }]);
+    this.node = Utils.buildDOM(['section', { class: 'app-screen screen-player' }]);
     const playlist = this.store.activePlaylist;
-    Utils.buildDOM(['h2', playlist ? `Player: ${playlist.title}` : 'Player'], this.node);
+    const header = Utils.buildDOM(['header', { class: 'player-context' }]);
+    const back = Utils.buildDOM(['button', { class: 'back-link', type: 'button', 'aria-label': 'Back to Library' }]);
+    back.append(Utils.buildDOM(['i', { class: 'fa-solid fa-chevron-left' }])); this.addDOMEventListener(back, 'click', this.onBack);
+    const artwork = Utils.buildDOM(['span', { class: 'artwork', 'aria-hidden': 'true' }]);
+    const copy = Utils.buildDOM(['span', { class: 'player-context__copy' }]);
+    Utils.buildDOM(['strong', playlist?.title || 'Player'], copy); Utils.buildDOM(['small', 'PERSONAL STUDY'], copy);
+    header.append(back, artwork, copy); this.node.append(header);
     if (!playlist) {
-      Utils.buildDOM(['p', 'No playlists saved yet.'], this.node);
+      const empty = Utils.buildDOM(['div', { class: 'screen-content player-content' }]); Utils.buildDOM(['p', 'No playlists saved yet.'], empty); this.node.append(empty); this.#appendNav();
       parent.append(this.node);
       return;
     }
 
     const select = Utils.ui.select();
-    const controls = Utils.buildDOM(['div', { 'data-controls': 'true' }]);
-    const text = Utils.buildDOM(['div', { 'data-text': 'true' }]);
+    select.className = 'player-item-select'; select.setAttribute('aria-label', 'Choose study item');
+    const content = Utils.buildDOM(['div', { class: 'screen-content player-content no-top-padding' }]);
+    const controls = Utils.buildDOM(['div', { class: 'player-controls', 'data-controls': 'true' }]);
+    const text = Utils.buildDOM(['div', { class: 'transcript-container' },
+      ['div', { class: 'transcript', 'data-text': 'true' }]
+    ]);
     this.store.activeItems.forEach((item) => {
       const option = Utils.ui.option(item.title, item.id);
       option.selected = item.id === this.currentItemId;
       select.append(option);
     });
-    this.node.append(select, controls, text);
+    const pin = Utils.buildDOM(['div', { class: 'pin-button-container' }]);
+    const pinButton = Utils.buildDOM(['button', { class: 'pin-button', type: 'button', 'aria-label': 'Pin item' }]); pinButton.append(Utils.buildDOM(['i', { class: 'fa-solid fa-thumbtack' }])); pin.append(pinButton);
+    const tools = Utils.buildDOM(['div', { class: 'player-tools' }]);
+    const speed = Utils.buildDOM(['span', '1×']); Utils.buildDOM(['small', 'Speed'], speed);
+    const queue = Utils.buildDOM(['span']); queue.append(Utils.buildDOM(['i', { class: 'fa-solid fa-list-ul' }])); Utils.buildDOM(['small', 'Queue'], queue); tools.append(speed, queue);
+    content.append(select, text, pin, controls, tools); this.node.append(content);
     parent.append(this.node);
 
     const selected = this.store.activeItems.find((item) => item.id === this.currentItemId) || this.store.activeItems[0];
@@ -62,6 +79,15 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
       this.onItemChange(item.id);
       this.renderItem(item, false);
     });
+    this.#appendNav();
+  }
+
+  #appendNav() {
+    const nav = Utils.buildDOM(['nav', { class: 'bottom-nav', 'aria-label': 'Primary navigation' }]);
+    const library = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]); library.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: 'fa-solid fa-folder' }])]), document.createTextNode('Library')); this.addDOMEventListener(library, 'click', this.onBack);
+    const player = Utils.buildDOM(['button', { class: 'bottom-nav__item is-active', type: 'button' }]); player.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: 'fa-solid fa-play' }])]), document.createTextNode('Player'));
+    const pins = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]); pins.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: 'fa-solid fa-thumbtack' }])]), document.createTextNode('Pins'));
+    nav.append(library, player, pins); this.node.append(nav);
   }
 
   async renderItem(item, autoPlay) {
@@ -119,6 +145,7 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
   }
 
   renderText(item, target, mediaPlayer) {
+    this.activeWord = null;
     let audioCharacterIndex = 0;
     let speechCharacterIndex = 0;
     let selectedParagraphCount = 0;
@@ -163,16 +190,37 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
   }
 
   updateHighlight(item, time) {
+    let nextActiveWord = null;
     item.paragraphs.forEach((paragraph, index) => {
       const element = this.node.querySelectorAll('.paragraph')[index];
       const active = paragraph.play && time >= paragraph.start && time <= paragraph.end;
       element?.classList.toggle('current', active);
-      element?.querySelectorAll('.word').forEach((word, wordIndex) => word.classList.toggle('current', active && Boolean(paragraph.words[wordIndex] && time >= paragraph.words[wordIndex].start && time <= paragraph.words[wordIndex].end)));
+      element?.querySelectorAll('.word').forEach((word, wordIndex) => {
+        const wordActive = active && Boolean(paragraph.words[wordIndex] && time >= paragraph.words[wordIndex].start && time <= paragraph.words[wordIndex].end);
+        word.classList.toggle('current', wordActive);
+        if (wordActive) nextActiveWord = word;
+      });
     });
+    this.#scrollToActiveWord(nextActiveWord);
   }
 
   updateTtsHighlight(index) {
-    this.node.querySelectorAll('.word').forEach((word) => word.classList.toggle('current', Number(word.dataset.charStart) <= index && index < Number(word.dataset.charEnd)));
+    let nextActiveWord = null;
+    this.node.querySelectorAll('.word').forEach((word) => {
+      const wordActive = Number(word.dataset.charStart) <= index && index < Number(word.dataset.charEnd);
+      word.classList.toggle('current', wordActive);
+      if (wordActive) nextActiveWord = word;
+    });
+    this.#scrollToActiveWord(nextActiveWord);
+  }
+
+  #scrollToActiveWord(word) {
+    if (!word || word === this.activeWord) {
+      if (!word) this.activeWord = null;
+      return;
+    }
+    this.activeWord = word;
+    word.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
   }
 
   #destroyMediaPlayer() {

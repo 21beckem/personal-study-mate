@@ -24,15 +24,15 @@ export class ParagraphEditor extends EventEmitterMixin(DOMElement) {
     const locked = this.item.status === 'ready';
     const text = Utils.ui.textarea('Canonical text'); text.value = this.item.text; text.disabled = locked;
     const parse = Utils.ui.button('Parse text into paragraphs'); parse.disabled = locked;
-    const add = Utils.ui.button('Add paragraph'); add.disabled = locked;
+    const add = Utils.ui.button('Add paragraph'); add.className = 'wide-button'; add.disabled = locked;
     const enableAll = Utils.ui.button('Enable all');
     const disableAll = Utils.ui.button('Disable all');
     this.addDOMEventListener(parse, 'click', () => this.emit('text-changed', EditorEvent.fromObject({ kind: 'item-text-changed', message: text.value })));
     this.addDOMEventListener(add, 'click', () => this.emit('paragraphs-changed', EditorEvent.fromObject({ kind: 'paragraphs-changed', entity: [...this.item.paragraphs, Paragraph.fromObject({ text: '' })] })));
     this.addDOMEventListener(enableAll, 'click', () => this.#setAllPlayable(true));
     this.addDOMEventListener(disableAll, 'click', () => this.#setAllPlayable(false));
-    this.node.append(Utils.ui.label('Canonical text'), text, parse, add, enableAll, disableAll);
-    const list = Utils.buildDOM(['div', { class: 'paragraph-list' }]); this.node.append(list);
+    this.node.append(Utils.ui.label('Canonical text'), text, parse, enableAll, disableAll);
+    const list = Utils.buildDOM(['div', { class: 'paragraph-list' }]); this.node.append(list, add);
     this.item.paragraphs.forEach((paragraph, index) => this.#addParagraph(list, paragraph, index, locked));
     if (parent) parent.append(this.node);
   }
