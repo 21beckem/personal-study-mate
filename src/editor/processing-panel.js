@@ -21,7 +21,8 @@ export class ProcessingPanel extends EventEmitterMixin(DOMElement) {
     Utils.buildDOM(['h3', 'Audio processing'], this.node);
     if (!this.item || this.item.type !== 'audio') { Utils.buildDOM(['p', 'Processing is available for pre-recorded audio items.'], this.node); if (parent) parent.append(this.node); return; }
     const message = Utils.ui.status(); message.dataset.processingMessage = 'true';
-    const process = Utils.ui.button(this.item.status === 'ready' ? 'Processed' : 'Process audio'); process.disabled = this.item.status === 'ready';
+    const process = Utils.ui.button(this.item.status === 'ready' ? 'Processed' : 'Process and lock audio');
+    process.disabled = this.item.status === 'ready';
     const unlock = Utils.ui.button('Unlock and reprocess'); unlock.disabled = this.item.status !== 'ready';
     this.addDOMEventListener(process, 'click', async () => { try { const attachment = await this.getAttachment(this.item); const processed = await this.processor.process(this.item, attachment); this.emit('processed', processed); } catch (error) { message.textContent = error.message; } });
     this.addDOMEventListener(unlock, 'click', () => this.emit('unlock', this.item));

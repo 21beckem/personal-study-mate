@@ -1,7 +1,9 @@
 const PROTOCOL_VERSION = 1;
 const CHUNK_BYTES = 512 * 1024;
+const TRANSCRIPTION_SERVER_URL = 'http://127.0.0.1:8765';
 const allowedAppOrigins = new Set(['http://localhost:8000', 'http://localhost:5500', 'https://21beckem.github.io']);
 const jobs = new Map();
+const transcriptionJobs = new Map();
 
 const send = (port, message) => port.postMessage({ protocol: PROTOCOL_VERSION, ...message });
 
@@ -69,6 +71,67 @@ const fetchAudio = async (audioSource) => {
   }
 };
 
+const bytesFromChunks = (chunks) => {
+  const decoded = chunks.map((chunk) => base64ToBytes(chunk));
+  const total = decoded.reduce((size, bytes) => size + bytes.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  decoded.forEach((bytes) => { result.set(bytes, offset); offset += bytes.length; });
+  return result;
+};
+
+const readTranscriptionStream = async (port, job, response) => {
+  if (!response.body) throw new Error('The transcription server returned an empty response.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let completed = false;
+  const handleLine = (line) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.type === 'progress') {
+      if (!job.detached) send(port, { type: 'transcribe-progress', jobId: job.id, phase: event.phase, message: event.message, percent: event.percent, currentSeconds: event.currentSeconds, totalSeconds: event.totalSeconds });
+    } else if (event.type === 'complete') {
+      completed = true;
+      if (!job.detached) send(port, { type: 'transcribe-complete', jobId: job.id, transcript: event.transcript });
+    } else if (event.type === 'error') {
+      throw new Error(event.message || 'The transcription server failed.');
+    }
+  };
+  while (true) {
+    if (job.cancelled) throw new Error('Transcription cancelled.');
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    lines.forEach(handleLine);
+    if (done) break;
+  }
+  if (buffer.trim()) handleLine(buffer);
+  if (!completed) throw new Error('The transcription server closed before completing.');
+};
+
+const transcribe = async (port, job, request) => {
+  try {
+    const bytes = bytesFromChunks(job.chunks);
+    const response = await fetch(`${TRANSCRIPTION_SERVER_URL}/transcribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': request.mimeType || 'application/octet-stream',
+        'X-Audio-Filename': request.fileName || 'recording.audio'
+      },
+      body: bytes,
+      signal: job.controller.signal
+    });
+    if (!response.ok) throw new Error(`Local transcription server returned HTTP ${response.status}.`);
+    await readTranscriptionStream(port, job, response);
+  } catch (error) {
+    if (!job.cancelled && !job.detached) send(port, { type: 'transcribe-error', jobId: job.id, message: error.message });
+  } finally {
+    transcriptionJobs.delete(port);
+  }
+};
+
 const sendAudio = async (port, job, requestId, audio) => {
   if (!audio) return;
   const total = Math.ceil(audio.bytes.length / CHUNK_BYTES);
@@ -121,6 +184,27 @@ chrome.runtime.onConnectExternal.addListener((port) => {
     if (!message || message.protocol !== PROTOCOL_VERSION) return;
     if (message.type === 'hello') { send(port, { type: 'hello-response' }); return; }
     if (message.type === 'collect-start') { collect(port, message); return; }
+    if (message.type === 'transcribe-start') {
+      const job = { id: message.jobId, totalChunks: message.totalChunks, chunks: [], cancelled: false, detached: false, started: false, controller: new AbortController(), request: message };
+      transcriptionJobs.set(port, job);
+      return;
+    }
+    if (message.type === 'transcribe-audio-chunk') {
+      const job = transcriptionJobs.get(port);
+      if (!job || job.id !== message.jobId) return;
+      job.chunks[message.sequence] = message.data || '';
+      send(port, { type: 'transcribe-audio-ack', jobId: job.id, sequence: message.sequence });
+      if (!job.started && job.chunks.filter(Boolean).length === job.totalChunks) {
+        job.started = true;
+        transcribe(port, job, job.request);
+      }
+      return;
+    }
+    if (message.type === 'transcribe-cancel') {
+      const job = transcriptionJobs.get(port);
+      if (job?.id === message.jobId) { job.cancelled = true; job.controller.abort(); transcriptionJobs.delete(port); }
+      return;
+    }
     const job = jobs.get(port);
     if (message.type === 'collect-cancel' && job?.id === message.jobId) { job.cancelled = true; return; }
     if (message.type === 'audio-chunk-ack' && job?.id === message.jobId) {
@@ -130,9 +214,12 @@ chrome.runtime.onConnectExternal.addListener((port) => {
   });
   port.onDisconnect.addListener(() => {
     const job = jobs.get(port);
-    if (!job) return;
-    job.cancelled = true;
-    job.pending.forEach(({ reject }) => reject(new Error('The web app disconnected.')));
-    jobs.delete(port);
+    if (job) {
+      job.cancelled = true;
+      job.pending.forEach(({ reject }) => reject(new Error('The web app disconnected.')));
+      jobs.delete(port);
+    }
+    const transcriptionJob = transcriptionJobs.get(port);
+    if (transcriptionJob) { transcriptionJob.detached = true; transcriptionJobs.delete(port); }
   });
 });

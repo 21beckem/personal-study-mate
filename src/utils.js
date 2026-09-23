@@ -66,6 +66,7 @@ export class Utils {
             disable: () => window.removeEventListener('beforeunload', INTERNAL_warnBeforeClosing)
         }
     }
+    static sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 }
 
 function INTERNAL_warnBeforeClosing(event) {

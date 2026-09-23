@@ -47,7 +47,15 @@ export class StudyItemEditor extends EventEmitterMixin(DOMElement) {
   async #loadAttachment(control) { const attachment = await this.getAttachment(this.item); if (!control.isDestroyed && attachment) control.setAttachment(attachment); }
   #wireParagraphs(component) {
     component.on('text-changed', (event) => { this.item = StudyItem.fromObject({ ...this.item.toObject(), text: event.message, paragraphs: Paragraph.splitText(event.message), status: 'draft', processing: null }); this.emit('text-changed', event); });
-    component.on('paragraphs-changed', (event) => { this.item = StudyItem.fromObject({ ...this.item.toObject(), paragraphs: event.entity, status: 'draft', processing: null }); this.emit('paragraphs-changed', event); });
+    component.on('paragraphs-changed', (event) => {
+      this.item = StudyItem.fromObject({
+        ...this.item.toObject(),
+        paragraphs: event.entity,
+        status: 'draft',
+        processing: null
+      });
+      this.emit('paragraphs-changed', event);
+    });
     component.on('move', (event) => this.emit('paragraph-move', event));
     component.on('remove', (event) => this.emit('paragraph-remove', event));
   }

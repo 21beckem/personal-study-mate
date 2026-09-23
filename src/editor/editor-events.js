@@ -12,11 +12,14 @@ export class EditorEvent {
 }
 
 export class ProcessingProgress {
-  constructor({ phase, message, percent = null }, token) {
+  constructor({ phase, message, percent = null, currentSeconds = null, totalSeconds = null, overallPercent = null }, token) {
     if (token !== CONSTRUCTION_TOKEN) throw new Error('ProcessingProgress must be created with ProcessingProgress.fromObject().');
     this.phase = phase;
     this.message = message;
     this.percent = percent;
+    this.currentSeconds = currentSeconds;
+    this.totalSeconds = totalSeconds;
+    this.overallPercent = overallPercent;
   }
 
   static fromObject(value = {}) { return new ProcessingProgress(value, CONSTRUCTION_TOKEN); }

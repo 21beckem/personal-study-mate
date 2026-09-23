@@ -157,7 +157,7 @@ export class PlaylistEditorSession extends EventEmitterMixin(Object) {
 
 const sameParagraphContent = (left, right) => left && right
   && left.id === right.id
-  && left.number === right.number
+  // && left.number === right.number
   && left.text === right.text
   && left.start === right.start
   && left.end === right.end

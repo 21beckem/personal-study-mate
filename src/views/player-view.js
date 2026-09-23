@@ -177,6 +177,11 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
         selectedParagraphCount++;
       }
 
+      if (paragraph.number !== null) {
+        const number = Utils.buildDOM(['span', { class: 'paragraph-number' }, `${paragraph.number} `]);
+        paragraphElement.append(number);
+      }
+
       (paragraph.text.match(/[A-Za-z0-9']+|[^A-Za-z0-9']+/g) || []).forEach((token) => {
         const isWord = /^[A-Za-z0-9']+$/.test(token);
         if (isWord) {

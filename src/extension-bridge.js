@@ -1,8 +1,17 @@
 import { AudioAttachment } from './models.js';
+import { TranscriptResult } from './transcription.js';
 
 const CONSTRUCTION_TOKEN = Symbol('extension-bridge-construction-token');
 const PROTOCOL_VERSION = 1;
 const CHUNK_TYPE = 'audio-chunk';
+const TRANSCRIPTION_CHUNK_BYTES = 512 * 1024;
+
+const bytesToBase64 = (bytes) => {
+  let result = '';
+  const binaryChunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += binaryChunkSize) result += String.fromCharCode(...bytes.subarray(index, index + binaryChunkSize));
+  return btoa(result);
+};
 
 const base64ToBlob = (chunks, mimeType) => {
   const parts = chunks.filter(Boolean).map((chunk) => {
@@ -129,6 +138,72 @@ export class ExtensionBridge {
     try {
       port.postMessage({ type: 'collect-start', protocol: PROTOCOL_VERSION, jobId: `job-${crypto.randomUUID()}`, playlist, assignments: assignments.map((assignment) => assignment.toObject()) });
     } catch (error) { cleanup(); rejectJob(error); }
+    return job;
+  }
+
+  async transcribe(attachment, { onProgress = () => {}, signal } = {}) {
+    const port = this.#connect();
+    if (!port) throw new Error('The Personal Study Mate extension is not available.');
+    if (!attachment?.blob) throw new Error('Choose an audio file before processing.');
+    this.port = port;
+    const jobId = `transcribe-${crypto.randomUUID()}`;
+    const bytes = new Uint8Array(await attachment.blob.arrayBuffer());
+    const totalChunks = Math.ceil(bytes.length / TRANSCRIPTION_CHUNK_BYTES);
+    const pendingAcks = new Map();
+    let resolveJob;
+    let rejectJob;
+    let settled = false;
+    const job = new Promise((resolve, reject) => { resolveJob = resolve; rejectJob = reject; });
+    const timer = setTimeout(() => finish(new Error('Local transcription timed out.')), 30 * 60 * 1000);
+    const abortListener = () => {
+      try { port.postMessage({ type: 'transcribe-cancel', protocol: PROTOCOL_VERSION, jobId }); } catch {}
+      pendingAcks.forEach(({ reject }) => reject(new DOMException('Transcription cancelled', 'AbortError')));
+      pendingAcks.clear();
+      finish(new DOMException('Transcription cancelled', 'AbortError'));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abortListener);
+      if (this.port === port) this.port = null;
+      try { port.disconnect(); } catch {}
+    };
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) rejectJob(error); else resolveJob(result);
+    };
+    const acknowledge = (sequence) => {
+      const pending = pendingAcks.get(sequence);
+      if (!pending) return;
+      pendingAcks.delete(sequence);
+      pending.resolve();
+    };
+    port.onMessage.addListener((message) => {
+      if (!message || message.protocol !== PROTOCOL_VERSION || message.jobId !== jobId) return;
+      if (message.type === 'transcribe-progress') { onProgress(message); return; }
+      if (message.type === 'transcribe-audio-ack') { acknowledge(message.sequence); return; }
+      if (message.type === 'transcribe-complete') { finish(null, TranscriptResult.fromObject(message.transcript)); return; }
+      if (message.type === 'transcribe-error') { finish(new Error(message.message || 'Local transcription failed.')); }
+    });
+    port.onDisconnect.addListener(() => {
+      pendingAcks.forEach(({ reject }) => reject(new Error('The extension connection was closed.')));
+      const error = new Error('The extension connection was closed before transcription finished.');
+      error.code = 'EXTENSION_DISCONNECTED';
+      finish(error);
+    });
+    signal?.addEventListener('abort', abortListener, { once: true });
+    if (signal?.aborted) { abortListener(); return job; }
+    try {
+      port.postMessage({ type: 'transcribe-start', protocol: PROTOCOL_VERSION, jobId, fileName: attachment.fileName, mimeType: attachment.mimeType, size: bytes.length, totalChunks });
+      for (let sequence = 0; sequence < totalChunks; sequence++) {
+        if (signal?.aborted) { abortListener(); break; }
+        const start = sequence * TRANSCRIPTION_CHUNK_BYTES;
+        const acknowledged = new Promise((resolve, reject) => pendingAcks.set(sequence, { resolve, reject }));
+        port.postMessage({ type: 'transcribe-audio-chunk', protocol: PROTOCOL_VERSION, jobId, sequence, data: bytesToBase64(bytes.subarray(start, Math.min(start + TRANSCRIPTION_CHUNK_BYTES, bytes.length))) });
+        await acknowledged;
+      }
+    } catch (error) { finish(error); }
     return job;
   }
 

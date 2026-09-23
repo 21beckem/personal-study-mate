@@ -37,7 +37,7 @@ python -m http.server 8000
 
 Open [http://localhost:8000](http://localhost:8000) in Chrome or Edge.
 
-The first transcription may download the browser model. No user audio or text is sent to an application server.
+The first browser transcription may download the browser model. By default, audio stays in the browser. An optional native processor can be run locally with `local-transcription-server\server.py`; when it is running, the extension relays audio to that server for faster, more reliable transcription.
 
 The Playlist Editor is UI-driven: create playlists, add TTS or pre-recorded items, attach audio, enter canonical text, split/edit paragraphs, choose which paragraphs play, process recordings, and save changes locally. JSON import/export remains available for backup and migration, but is no longer the normal editing interface.
 
@@ -64,6 +64,17 @@ The optional Manifest V3 extension is in [`extension/`](extension/). To use it d
 5. In Library, paste the assignment list into the collector panel and choose **Collect assignments**.
 
 The extension opens approved ChurchofJesusChrist.org and legacy lds.org pages in inactive tabs, extracts article or scripture paragraphs, downloads available audio, and streams the results back to the web app. The web app normalizes the collected data, processes audio locally, and stores the final playlist in IndexedDB.
+
+## Optional native transcription server
+
+Install and run the local `faster-whisper` processor from the project root:
+
+```powershell
+python -m pip install -r local-transcription-server\requirements.txt
+python local-transcription-server\server.py
+```
+
+Keep the browser extension enabled while using the server. The app sends audio through the extension to `http://127.0.0.1:8765`, logs transcription progress to the browser console, and falls back to browser transcription if the server is unavailable. Repeated audio files are cached under `local-transcription-server\cache`.
 
 ## JSON shape
 
