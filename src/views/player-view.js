@@ -84,10 +84,30 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
 
   #appendNav() {
     const nav = Utils.buildDOM(['nav', { class: 'bottom-nav', 'aria-label': 'Primary navigation' }]);
-    const library = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]); library.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: 'fa-solid fa-folder' }])]), document.createTextNode('Library')); this.addDOMEventListener(library, 'click', this.onBack);
-    const player = Utils.buildDOM(['button', { class: 'bottom-nav__item is-active', type: 'button' }]); player.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: 'fa-solid fa-play' }])]), document.createTextNode('Player'));
-    const pins = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]); pins.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: 'fa-solid fa-thumbtack' }])]), document.createTextNode('Pins'));
-    nav.append(library, player, pins); this.node.append(nav);
+    const library = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]);
+    library.append(
+      Utils.buildDOM(['span',
+        ['i', { class: 'fa-solid fa-folder' }]
+      ]),
+      document.createTextNode('Library')
+    );
+    this.addDOMEventListener(library, 'click', this.onBack);
+    const player = Utils.buildDOM(['button', { class: 'bottom-nav__item is-active', type: 'button' }]);
+    player.append(
+      Utils.buildDOM(['span',
+        ['i', { class: 'fa-solid fa-play' }]
+      ]),
+      document.createTextNode('Player')
+    );
+    const pins = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]);
+    pins.append(
+      Utils.buildDOM(['span',
+        ['i', { class: 'fa-solid fa-thumbtack' }]
+      ]),
+      document.createTextNode('Pins')
+    );
+    nav.append(library, player, pins);
+    this.node.append(nav);
   }
 
   async renderItem(item, autoPlay) {
@@ -180,7 +200,7 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
           return;
         }
 
-        paragraphElement.append(Utils.buildDOM(['span', token]).firstChild);
+        paragraphElement.append(Utils.buildDOM(['span', { class: 'non-word' }, token]));
         if (item.type === 'tts' && paragraphIsPlayable) speechCharacterIndex += token.length;
         if (item.type !== 'tts') audioCharacterIndex += token.length;
       });

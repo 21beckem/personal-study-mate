@@ -64,7 +64,9 @@ export class LibraryView extends EventEmitterMixin(DOMElement) {
 
   #navLink(view, icon, label, active = false) {
     const link = Utils.buildDOM(['button', { class: `bottom-nav__item${active ? ' is-active' : ''}` }]);
-    link.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: `fa-solid fa-${icon}` }])]), document.createTextNode(label));
+    const iconContainer = Utils.buildDOM(['span']);
+    iconContainer.append(Utils.buildDOM(['i', { class: `fa-solid fa-${icon}` }]));
+    link.append(iconContainer, document.createTextNode(label));
     if (view !== 'pins') this.addDOMEventListener(link, 'click', () => view === 'library' ? null : this.onOpen(this.store.activePlaylistId));
     return link;
   }

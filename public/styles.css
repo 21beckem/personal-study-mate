@@ -168,7 +168,12 @@ button { cursor: pointer; }
   line-height: 1.45;
 }
 .transcript-container .paragraph { margin: 0 0 1.2em; font-size: clamp(20px, 5.2vw, 25px); line-height: 1.45; }
-.word { cursor: pointer; } .word.current, mark { padding: 0 3px; border-radius: 3px; background: var(--sage); color: inherit; }
+.word { cursor: pointer; }
+.non-word {
+    position: relative;
+    z-index: 1;
+}
+.word.current, mark { outline: 3px solid var(--sage); border-radius: 3px; background: var(--sage); color: inherit; }
 .paragraph.current { outline: 2px solid var(--sage); outline-offset: 4px; }
 .player-controls { flex: 0 0 auto; }
 .pin-button-container { position: relative; height: 0; overflow: visible; }

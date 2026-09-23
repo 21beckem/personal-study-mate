@@ -35,7 +35,7 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
     this.node.append(nav); this.target.append(this.node); return this;
   }
 
-  #navButton(view, icon, label) { const button = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]); button.append(Utils.buildDOM(['span', Utils.buildDOM(['i', { class: `fa-solid fa-${icon}` }])]), document.createTextNode(label)); if (view === 'library') this.addDOMEventListener(button, 'click', this.onBack); if (view === 'player') this.addDOMEventListener(button, 'click', this.onPlayer); return button; }
+  #navButton(view, icon, label) { const button = Utils.buildDOM(['button', { class: 'bottom-nav__item', type: 'button' }]); const iconContainer = Utils.buildDOM(['span']); iconContainer.append(Utils.buildDOM(['i', { class: `fa-solid fa-${icon}` }])); button.append(iconContainer, document.createTextNode(label)); if (view === 'library') this.addDOMEventListener(button, 'click', this.onBack); if (view === 'player') this.addDOMEventListener(button, 'click', this.onPlayer); return button; }
 
   #goBack(back, heading) { if (this.editingItem) { this.editingItem = false; this.node.classList.remove('is-item-editing'); heading.textContent = 'Edit playlist'; back?.setAttribute('aria-label', 'Back to Library'); return; } this.onBack(); }
 
