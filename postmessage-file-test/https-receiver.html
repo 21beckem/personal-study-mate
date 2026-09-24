@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTTPS file receiver</title>
+  <style>
+    body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui, sans-serif; }
+    audio { display: block; margin: 1rem 0; width: 100%; }
+    a { display: inline-block; margin: .5rem 0; }
+    pre { background: #f3f3f3; border: 1px solid #ddd; margin-top: 1.25rem; max-height: 18rem; overflow: auto; padding: 1rem; white-space: pre-wrap; }
+    .toast { position: fixed; right: 1rem; bottom: 1rem; left: 1rem; z-index: 2; margin: auto; max-width: 32rem; padding: .8rem 1rem; border-radius: .5rem; background: #14213d; color: white; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>HTTPS file receiver</h1>
+  <p id="message">Waiting for the HTTP sender...</p>
+  <audio id="audio" controls hidden></audio>
+  <a id="download" hidden>Download received file</a>
+  <pre id="details">No file received yet.</pre>
+
+  <script>
+    const transferId = new URLSearchParams(window.location.search).get('transferId');
+    const messageElement = document.querySelector('#message');
+    const detailsElement = document.querySelector('#details');
+    const audioElement = document.querySelector('#audio');
+    const downloadElement = document.querySelector('#download');
+    let receivedObjectUrl;
+
+    function showError(message) {
+      messageElement.textContent = message;
+      detailsElement.textContent = message;
+    }
+
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      document.body.append(toast);
+      setTimeout(() => toast.remove(), 8000);
+    }
+
+    if (!window.opener) {
+      showError('This page must be opened by the HTTP sender page.');
+    } else if (!transferId) {
+      showError('The transfer ID is missing from the URL.');
+    } else {
+      const readyMessage = () => window.opener.postMessage({
+        type: 'receiver-ready',
+        transferId
+      }, '*');
+
+      readyMessage();
+      setTimeout(readyMessage, 500);
+      setTimeout(readyMessage, 1500);
+
+      window.addEventListener('message', (event) => {
+        if (event.source !== window.opener) {
+          return;
+        }
+
+        if (event.data?.transferId !== transferId) {
+          showError('Rejected a file with an unexpected transfer ID.');
+          return;
+        }
+
+        if (event.data.type === 'file-coming') {
+          showToast(`${event.data.fileName || 'A file'} is coming. Please wait...`);
+          messageElement.textContent = 'The sender is preparing the file...';
+          return;
+        }
+
+        if (event.data.type !== 'file-transfer') return;
+
+        try {
+          const { base64, byteLength, fileName, mimeType } = event.data;
+          if (typeof base64 !== 'string' || !base64 || typeof fileName !== 'string') {
+            throw new Error('The file payload is incomplete.');
+          }
+
+          const binary = atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index += 1) {
+            bytes[index] = binary.charCodeAt(index);
+          }
+
+          if (bytes.byteLength !== byteLength) {
+            throw new Error(`Byte-length mismatch: expected ${byteLength}, received ${bytes.byteLength}.`);
+          }
+
+          if (receivedObjectUrl) {
+            URL.revokeObjectURL(receivedObjectUrl);
+          }
+
+          const blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+          receivedObjectUrl = URL.createObjectURL(blob);
+          audioElement.src = receivedObjectUrl;
+          audioElement.hidden = false;
+          downloadElement.href = receivedObjectUrl;
+          downloadElement.download = fileName;
+          downloadElement.hidden = false;
+          messageElement.textContent = `Received ${fileName}.`;
+          detailsElement.textContent = JSON.stringify({
+            fileName,
+            mimeType: mimeType || 'application/octet-stream',
+            byteLength: bytes.byteLength,
+            base64Length: base64.length,
+            senderOrigin: event.origin
+          }, null, 2);
+
+          window.opener.postMessage({
+            type: 'file-received',
+            transferId,
+            fileName
+          }, event.origin);
+        } catch (error) {
+          showError(`Could not accept the file: ${error.message}`);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

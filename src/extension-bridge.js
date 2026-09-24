@@ -1,10 +1,12 @@
 import { AudioAttachment } from './models.js';
 import { TranscriptResult } from './transcription.js';
+import { createId } from './ids.js';
 
 const CONSTRUCTION_TOKEN = Symbol('extension-bridge-construction-token');
 const PROTOCOL_VERSION = 1;
 const CHUNK_TYPE = 'audio-chunk';
 const TRANSCRIPTION_CHUNK_BYTES = 512 * 1024;
+const SHARE_CHUNK_CHARACTERS = 256 * 1024;
 
 const bytesToBase64 = (bytes) => {
   let result = '';
@@ -136,7 +138,7 @@ export class ExtensionBridge {
       if (this.port === port) { clearTimeout(timer); this.port = null; rejectJob(new Error('The extension connection was closed before collection finished.')); }
     });
     try {
-      port.postMessage({ type: 'collect-start', protocol: PROTOCOL_VERSION, jobId: `job-${crypto.randomUUID()}`, playlist, assignments: assignments.map((assignment) => assignment.toObject()) });
+      port.postMessage({ type: 'collect-start', protocol: PROTOCOL_VERSION, jobId: createId('job'), playlist, assignments: assignments.map((assignment) => assignment.toObject()) });
     } catch (error) { cleanup(); rejectJob(error); }
     return job;
   }
@@ -146,7 +148,7 @@ export class ExtensionBridge {
     if (!port) throw new Error('The Personal Study Mate extension is not available.');
     if (!attachment?.blob) throw new Error('Choose an audio file before processing.');
     this.port = port;
-    const jobId = `transcribe-${crypto.randomUUID()}`;
+    const jobId = createId('transcribe');
     const bytes = new Uint8Array(await attachment.blob.arrayBuffer());
     const totalChunks = Math.ceil(bytes.length / TRANSCRIPTION_CHUNK_BYTES);
     const pendingAcks = new Map();
@@ -203,6 +205,78 @@ export class ExtensionBridge {
         port.postMessage({ type: 'transcribe-audio-chunk', protocol: PROTOCOL_VERSION, jobId, sequence, data: bytesToBase64(bytes.subarray(start, Math.min(start + TRANSCRIPTION_CHUNK_BYTES, bytes.length))) });
         await acknowledged;
       }
+    } catch (error) { finish(error); }
+    return job;
+  }
+
+  async sharePackage(packageText, { onProgress = () => {}, signal } = {}) {
+    const port = this.#connect();
+    if (!port) throw new Error('The Personal Study Mate extension is not available.');
+    if (typeof packageText !== 'string' || !packageText) throw new Error('The playlist package is empty.');
+    this.port = port;
+    const jobId = createId('share');
+    const totalChunks = Math.max(1, Math.ceil(packageText.length / SHARE_CHUNK_CHARACTERS));
+    const pendingAcks = new Map();
+    let resolveJob;
+    let rejectJob;
+    let settled = false;
+    const job = new Promise((resolve, reject) => { resolveJob = resolve; rejectJob = reject; });
+    const timer = setTimeout(() => finish(new Error('Playlist sharing timed out.')), 10 * 60 * 1000);
+    const abortListener = () => {
+      try { port.postMessage({ type: 'share-cancel', protocol: PROTOCOL_VERSION, jobId }); } catch {}
+      pendingAcks.forEach(({ reject }) => reject(new DOMException('Sharing cancelled', 'AbortError')));
+      pendingAcks.clear();
+      finish(new DOMException('Sharing cancelled', 'AbortError'));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abortListener);
+      if (this.port === port) this.port = null;
+      try { port.disconnect(); } catch {}
+    };
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) rejectJob(error); else resolveJob(result);
+    };
+    const acknowledge = (sequence) => {
+      const pending = pendingAcks.get(sequence);
+      if (!pending) return;
+      pendingAcks.delete(sequence);
+      pending.resolve();
+    };
+    port.onMessage.addListener((message) => {
+      if (!message || message.protocol !== PROTOCOL_VERSION || message.jobId !== jobId) return;
+      if (message.type === 'share-package-chunk-ack') { acknowledge(message.sequence); return; }
+      if (message.type === 'share-complete') { finish(null, message); return; }
+      if (message.type === 'share-error') finish(new Error(message.message || 'The local sharing server failed.'));
+    });
+    port.onDisconnect.addListener(() => {
+      pendingAcks.forEach(({ reject }) => reject(new Error('The extension connection was closed.')));
+      const error = new Error('The extension connection was closed before sharing finished.');
+      error.code = 'EXTENSION_DISCONNECTED';
+      finish(error);
+    });
+    signal?.addEventListener('abort', abortListener, { once: true });
+    if (signal?.aborted) { abortListener(); return job; }
+    try {
+      port.postMessage({ type: 'share-start', protocol: PROTOCOL_VERSION, jobId, totalChunks });
+      for (let sequence = 0; sequence < totalChunks; sequence += 1) {
+        if (signal?.aborted) { abortListener(); break; }
+        const acknowledged = new Promise((resolve, reject) => pendingAcks.set(sequence, { resolve, reject }));
+        const start = sequence * SHARE_CHUNK_CHARACTERS;
+        port.postMessage({
+          type: 'share-package-chunk',
+          protocol: PROTOCOL_VERSION,
+          jobId,
+          sequence,
+          data: packageText.slice(start, start + SHARE_CHUNK_CHARACTERS)
+        });
+        await acknowledged;
+        onProgress({ completed: sequence + 1, total: totalChunks });
+      }
+      if (!settled) port.postMessage({ type: 'share-complete', protocol: PROTOCOL_VERSION, jobId });
     } catch (error) { finish(error); }
     return job;
   }

@@ -17,6 +17,9 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
     database,
     aligner,
     extensionBridge,
+    extensionAvailable = false,
+    onExport,
+    onShare,
     onStatus,
     onBack,
     onPlayer
@@ -26,6 +29,9 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
     this.target = target;
     this.store = store;
     this.database = database;
+    this.extensionAvailable = extensionAvailable;
+    this.onExport = onExport;
+    this.onShare = onShare;
     this.onStatus = onStatus;
     this.onBack = onBack;
     this.onPlayer = onPlayer;
@@ -65,6 +71,25 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
     }]));
     const heading = Utils.buildDOM(['h1', 'Edit playlist']);
     header.append(back, heading);
+    const actions = Utils.buildDOM(['div', { class: 'screen-header__actions' }]);
+    const exportButton = Utils.ui.button('Export playlist');
+    exportButton.className = 'text-button utility-button';
+    this.addDOMEventListener(exportButton, 'click', () => this.onExport?.(this.session.activePlaylist?.id));
+    actions.append(exportButton);
+    if (this.extensionAvailable) {
+      const shareButton = Utils.ui.button('Send to phone');
+      shareButton.className = 'text-button utility-button';
+      this.addDOMEventListener(shareButton, 'click', async () => {
+        shareButton.disabled = true;
+        try {
+          await this.onShare?.(this.session.activePlaylist?.id, shareButton);
+        } finally {
+          shareButton.disabled = false;
+        }
+      });
+      actions.append(shareButton);
+    }
+    header.append(actions);
     this.addDOMEventListener(back, 'click', () => this.#goBack(back, heading));
     this.node.append(header);
     const content = Utils.buildDOM(['div', {

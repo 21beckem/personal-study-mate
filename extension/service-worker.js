@@ -1,9 +1,11 @@
 const PROTOCOL_VERSION = 1;
 const CHUNK_BYTES = 512 * 1024;
-const TRANSCRIPTION_SERVER_URL = 'http://127.0.0.1:8765';
+const TRANSCRIPTION_SERVER_URL = 'http://127.0.0.1:2094';
+const SHARE_SERVER_URL = TRANSCRIPTION_SERVER_URL;
 const allowedAppOrigins = new Set(['http://localhost:8000', 'http://localhost:5500', 'https://21beckem.github.io']);
 const jobs = new Map();
 const transcriptionJobs = new Map();
+const shareJobs = new Map();
 
 const send = (port, message) => port.postMessage({ protocol: PROTOCOL_VERSION, ...message });
 
@@ -111,7 +113,26 @@ const readTranscriptionStream = async (port, job, response) => {
   if (!completed) throw new Error('The transcription server closed before completing.');
 };
 
+const startTranscriptionKeepAlive = () => {
+  const keepAlive = () => {
+    try { chrome.runtime.getPlatformInfo(() => {}); } catch {}
+  };
+  keepAlive();
+  const timer = setInterval(keepAlive, 20 * 1000);
+  return () => clearInterval(timer);
+};
+
+const startShareKeepAlive = () => {
+  const keepAlive = () => {
+    try { chrome.runtime.getPlatformInfo(() => {}); } catch {}
+  };
+  keepAlive();
+  const timer = setInterval(keepAlive, 20 * 1000);
+  return () => clearInterval(timer);
+};
+
 const transcribe = async (port, job, request) => {
+  const stopKeepAlive = startTranscriptionKeepAlive();
   try {
     const bytes = bytesFromChunks(job.chunks);
     const response = await fetch(`${TRANSCRIPTION_SERVER_URL}/transcribe`, {
@@ -128,7 +149,28 @@ const transcribe = async (port, job, request) => {
   } catch (error) {
     if (!job.cancelled && !job.detached) send(port, { type: 'transcribe-error', jobId: job.id, message: error.message });
   } finally {
+    stopKeepAlive();
     transcriptionJobs.delete(port);
+  }
+};
+
+const share = async (port, job) => {
+  const stopKeepAlive = startShareKeepAlive();
+  try {
+    const packageText = job.chunks.join('');
+    const response = await fetch(`${SHARE_SERVER_URL}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: packageText,
+    });
+    if (!response.ok) throw new Error(`Local sharing server returned HTTP ${response.status}.`);
+    const result = await response.json();
+    send(port, { type: 'share-complete', jobId: job.id, url: result.url, token: result.token, expiresIn: result.expiresIn });
+  } catch (error) {
+    if (!job.detached) send(port, { type: 'share-error', jobId: job.id, message: error.message });
+  } finally {
+    stopKeepAlive();
+    shareJobs.delete(port);
   }
 };
 
@@ -179,7 +221,8 @@ const collect = async (port, request) => {
 
 chrome.runtime.onConnectExternal.addListener((port) => {
   const origin = port.sender?.url ? new URL(port.sender.url).origin : '';
-  if (!allowedAppOrigins.has(origin) || port.name !== 'personal-study-mate-v1') { port.disconnect(); return; }
+  const isReplitOrigin = /^https:\/\/([a-z0-9-]+\.)?replit\.(app|dev)$/i.test(origin);
+  if ((!allowedAppOrigins.has(origin) && !isReplitOrigin) || port.name !== 'personal-study-mate-v1') { port.disconnect(); return; }
   port.onMessage.addListener((message) => {
     if (!message || message.protocol !== PROTOCOL_VERSION) return;
     if (message.type === 'hello') { send(port, { type: 'hello-response' }); return; }
@@ -205,6 +248,30 @@ chrome.runtime.onConnectExternal.addListener((port) => {
       if (job?.id === message.jobId) { job.cancelled = true; job.controller.abort(); transcriptionJobs.delete(port); }
       return;
     }
+    if (message.type === 'share-start') {
+      const job = { id: message.jobId, totalChunks: message.totalChunks, chunks: [], cancelled: false, detached: false, started: false };
+      shareJobs.set(port, job);
+      return;
+    }
+    if (message.type === 'share-package-chunk') {
+      const job = shareJobs.get(port);
+      if (!job || job.id !== message.jobId || !Number.isInteger(message.sequence)) return;
+      job.chunks[message.sequence] = message.data || '';
+      send(port, { type: 'share-package-chunk-ack', jobId: job.id, sequence: message.sequence });
+      return;
+    }
+    if (message.type === 'share-complete') {
+      const job = shareJobs.get(port);
+      if (!job || job.id !== message.jobId || job.started || job.chunks.length !== job.totalChunks || job.chunks.some((chunk) => typeof chunk !== 'string')) return;
+      job.started = true;
+      share(port, job);
+      return;
+    }
+    if (message.type === 'share-cancel') {
+      const job = shareJobs.get(port);
+      if (job?.id === message.jobId) { job.cancelled = true; shareJobs.delete(port); }
+      return;
+    }
     const job = jobs.get(port);
     if (message.type === 'collect-cancel' && job?.id === message.jobId) { job.cancelled = true; return; }
     if (message.type === 'audio-chunk-ack' && job?.id === message.jobId) {
@@ -221,5 +288,7 @@ chrome.runtime.onConnectExternal.addListener((port) => {
     }
     const transcriptionJob = transcriptionJobs.get(port);
     if (transcriptionJob) { transcriptionJob.detached = true; transcriptionJobs.delete(port); }
+    const shareJob = shareJobs.get(port);
+    if (shareJob) { shareJob.detached = true; shareJobs.delete(port); }
   });
 });

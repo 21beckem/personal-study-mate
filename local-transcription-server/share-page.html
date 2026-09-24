@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Send playlist to phone</title>
+  <style>
+    body { max-width: 38rem; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui, sans-serif; }
+    button, a { display: inline-block; margin: .5rem .25rem .5rem 0; padding: .6rem .9rem; }
+    #status { background: #f3f3f3; padding: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Playlist transfer</h1>
+  <p id="status">Connecting to Personal Study Mate...</p>
+  <button id="open-app" type="button">Open Personal Study Mate</button>
+  <a id="download" hidden>Download package instead</a>
+
+  <script>
+    const config = __SHARE_CONFIG__;
+    const statusElement = document.querySelector('#status');
+    const openButton = document.querySelector('#open-app');
+    const downloadLink = document.querySelector('#download');
+    const transferId = `transfer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const appUrl = new URL(config.appUrl, window.location.href);
+    const appOrigin = appUrl.origin;
+    appUrl.searchParams.set('receive-package', transferId);
+    let appWindow = null;
+    let packageText = null;
+    let transferPromise = null;
+
+    function setStatus(message) {
+      statusElement.textContent = message;
+    }
+
+    function waitForMessage(types, sequence = null) {
+      return new Promise((resolve, reject) => {
+        const listener = (event) => {
+          if (event.source !== appWindow || event.origin !== appOrigin || event.data?.transferId !== transferId) return;
+          if (!types.includes(event.data.type) || (sequence !== null && event.data.sequence !== sequence)) return;
+          window.removeEventListener('message', listener);
+          if (event.data.type === 'package-transfer-error') reject(new Error(event.data.message || 'The app rejected the package.'));
+          else resolve(event.data);
+        };
+        window.addEventListener('message', listener);
+      });
+    }
+
+    async function transferPackage() {
+      if (!appWindow) return;
+      try {
+        appWindow.postMessage({
+          type: 'package-transfer-announcement',
+          transferId,
+          fileName: 'playlist package'
+        }, appOrigin);
+        await waitForMessage(['package-transfer-announcement-ack']);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        setStatus('Loading the playlist package...');
+        const response = await fetch(config.packageUrl);
+        if (!response.ok) throw new Error(`Package request failed with HTTP ${response.status}.`);
+        packageText = await response.text();
+        const totalChunks = Math.max(1, Math.ceil(packageText.length / (256 * 1024)));
+
+        appWindow.postMessage({ type: 'package-transfer-start', transferId, totalChunks, totalCharacters: packageText.length }, appOrigin);
+        await waitForMessage(['package-transfer-start-ack']);
+        for (let sequence = 0; sequence < totalChunks; sequence += 1) {
+          appWindow.postMessage({
+            type: 'package-transfer-chunk',
+            transferId,
+            sequence,
+            data: packageText.slice(sequence * 256 * 1024, (sequence + 1) * 256 * 1024)
+          }, appOrigin);
+          await waitForMessage(['package-transfer-chunk-ack'], sequence);
+          setStatus(`Sending playlist package (${sequence + 1} of ${totalChunks})...`);
+        }
+        appWindow.postMessage({ type: 'package-transfer-complete', transferId }, appOrigin);
+        await waitForMessage(['package-transfer-accepted']);
+        await fetch(config.consumeUrl, { method: 'POST' });
+        setStatus('Playlist imported successfully.');
+      } catch (error) {
+        setStatus(`Transfer failed: ${error.message}`);
+      }
+    }
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== appWindow || event.origin !== appOrigin || event.data?.transferId !== transferId) return;
+      if (event.data.type === 'package-transfer-ready') {
+        transferPromise ||= transferPackage();
+      }
+      if (event.data.type === 'package-transfer-announcement-ack') {
+        setStatus('The phone is ready. Sending the playlist package...');
+      }
+    });
+
+    function openApp() {
+      appWindow = window.open(appUrl.href, '_blank');
+      if (!appWindow) {
+        setStatus('The browser blocked the app window. Allow popups and try again.');
+        return;
+      }
+      openButton.disabled = true;
+      setStatus('Waiting for Personal Study Mate to open...');
+    }
+
+    openButton.addEventListener('click', openApp);
+    downloadLink.href = config.packageUrl;
+    downloadLink.download = 'personal-study-mate-playlist.psm.json';
+    downloadLink.hidden = false;
+    openApp();
+  </script>
+</body>
+</html>

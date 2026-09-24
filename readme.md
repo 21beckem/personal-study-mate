@@ -51,7 +51,7 @@ The Playlist Editor is UI-driven: create playlists, add TTS or pre-recorded item
 6. Save the playlist, then open it in **Player**.
 7. Use the browser speech controls for TTS items or the audio controls for recordings.
 
-The data model supports version 2 package files containing playlist metadata, study items, paragraphs, and embedded audio. Use **Export package** and **Import package** in the Library to move a complete playlist between browser profiles.
+The data model supports version 2 package files containing playlist metadata, study items, paragraphs, and embedded audio. Use **Export playlist** in the playlist editor for a JSON backup. When the browser extension and local server are available, **Send to phone** creates a temporary LAN link and QR code for the current playlist.
 
 ## Gospel Library collector extension
 
@@ -74,7 +74,15 @@ python -m pip install -r local-transcription-server\requirements.txt
 python local-transcription-server\server.py
 ```
 
-Keep the browser extension enabled while using the server. The app sends audio through the extension to `http://127.0.0.1:8765`, logs transcription progress to the browser console, and falls back to browser transcription if the server is unavailable. Repeated audio files are cached under `local-transcription-server\cache`.
+Keep the browser extension enabled while using the server. The app sends audio through the extension to `http://127.0.0.1:2094`, logs transcription progress to the browser console, and falls back to browser transcription if the server is unavailable. Repeated audio files are cached under `local-transcription-server\cache`.
+
+For phone sharing, run the server with a LAN bind and the HTTPS app URL:
+
+```powershell
+python local-transcription-server\server.py --host 0.0.0.0 --app-url https://YOUR-APP-URL/
+```
+
+The phone and computer must be on the same network, and the local server port may need to be allowed through Windows Firewall. Shares are temporary and are deleted after 30 minutes or a successful import.
 
 ## JSON shape
 

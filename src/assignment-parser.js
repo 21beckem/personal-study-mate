@@ -1,3 +1,5 @@
+import { createId } from './ids.js';
+
 const CONSTRUCTION_TOKEN = Symbol('assignment-request-construction-token');
 const allowedHosts = new Set(['www.churchofjesuschrist.org', 'churchofjesuschrist.org', 'www.lds.org', 'lds.org']);
 const visibleText = (element) => {
@@ -45,7 +47,7 @@ export class AssignmentRequest {
 
   static fromObject(value = {}) {
     return new AssignmentRequest({
-      id: value.id || `assignment-${crypto.randomUUID()}`,
+      id: value.id || createId('assignment'),
       kind: value.kind,
       label: value.label,
       url: String(value.url || '').trim(),

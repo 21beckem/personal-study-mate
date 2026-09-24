@@ -11,4 +11,6 @@ python -m pip install -r local-transcription-server\requirements.txt
 python local-transcription-server\server.py
 ```
 
-The extension relays audio to `http://127.0.0.1:8765` and streams transcription progress back to the web app. If the server is not running, the web app falls back to browser transcription.
+The extension relays audio to `http://127.0.0.1:2094` and streams transcription progress back to the web app. If the server is not running, the web app falls back to browser transcription.
+
+The playlist editor also exposes **Send to phone** when the extension is detected. The extension sends the current playlist package to the local server, which creates a temporary LAN URL and QR code. Start the server with `--host 0.0.0.0` and `--app-url https://YOUR-APP-URL/` for phone sharing; the phone must be on the same network.

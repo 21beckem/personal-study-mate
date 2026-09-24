@@ -23,25 +23,19 @@ export class StudyItemProcessor extends EventEmitterMixin(Object) {
     if (this.extensionBridge?.supported) {
       console.info('[study-mate transcription] Attempting native transcription through the extension relay.');
       this.#progress('loading', 'Checking local transcription server...', 5);
-      for (let attempt = 1; attempt <= 2 && !transcript; attempt++) {
-        try {
-          transcript = await this.extensionBridge.transcribe(attachment, {
-            onProgress: (progress) => this.#progress(
-              progress.phase || 'transcribing',
-              progress.message || 'Transcribing locally...',
-              progress.percent ?? null,
-              progress.currentSeconds ?? null,
-              progress.totalSeconds ?? null
-            )
-          });
-          console.info(`[study-mate transcription] Local server completed${transcript.cached ? ' from cache' : ''}.`);
-        } catch (error) {
-          if (error.code === 'EXTENSION_DISCONNECTED' && attempt === 1) {
-            console.warn('[study-mate transcription] Native relay disconnected; retrying once to recover a completed server transcript.');
-            continue;
-          }
-          console.warn(`[study-mate transcription] Local server unavailable; falling back to browser transcription. ${error.message}`);
-        }
+      try {
+        transcript = await this.extensionBridge.transcribe(attachment, {
+          onProgress: (progress) => this.#progress(
+            progress.phase || 'transcribing',
+            progress.message || 'Transcribing locally...',
+            progress.percent ?? null,
+            progress.currentSeconds ?? null,
+            progress.totalSeconds ?? null
+          )
+        });
+        console.info(`[study-mate transcription] Local server completed${transcript.cached ? ' from cache' : ''}.`);
+      } catch (error) {
+        console.warn(`[study-mate transcription] Local server unavailable; falling back to browser transcription. ${error.message}`);
       }
     } else {
       console.warn('[study-mate transcription] Extension relay unavailable; using browser transcription.');

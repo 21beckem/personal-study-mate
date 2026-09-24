@@ -1,3 +1,30 @@
+import { DOMElement } from './modules.js';
+class Toast extends DOMElement {
+    constructor(message, isError = false, timeout=8000) {
+        super();
+        this.node = Utils.buildDOM(['div',
+            {
+                class: 'app-toast' + (isError ? ' is-error' : ''),
+                role: 'status',
+                style: 'transform: translateY(100px); opacity: 0; pointer-events: none;'
+            },
+            message
+        ]);
+        document.body.append(this.node);
+
+        setTimeout(() => {
+            if (this.isDestroyed) return;
+            this.node.style.cssText = 'translateY(0); opacity: 0.9; pointer-events: auto;';
+        }, 5);
+        setTimeout(() => {
+            if (this.isDestroyed) return;
+            this.node.style.cssText = 'translateY(-100px); opacity: 0; pointer-events: none;';
+            setTimeout(() => this.destroy(), 300);
+        }, timeout);
+    }
+}
+
+
 export class Utils {
     static buildDOM(structure, pNode) {
         if(!Array.isArray(structure))
@@ -67,6 +94,9 @@ export class Utils {
         }
     }
     static sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+    static toast(message, isError=false, timeout=8000) {
+        return new Toast(message, isError, timeout);
+    }
 }
 
 function INTERNAL_warnBeforeClosing(event) {

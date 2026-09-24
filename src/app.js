@@ -13,10 +13,21 @@ import { AudioAttachment, PackageBundle, Paragraph, Playlist, StudyItem, StudyPa
 import { AssignmentRequest, parseVerseSelection } from './assignment-parser.js';
 import { discoverExtensionId, ExtensionBridge } from './extension-bridge.js';
 import { StudyItemProcessor } from './editor/item-processor.js';
+import { PackageTransferReceiver } from './package-transfer.js';
+import { PlaylistShareDialog } from './playlist-share-dialog.js';
+import { createId } from './ids.js';
 
 const app = document.querySelector('#app');
-const statusElement = document.querySelector('#status');
-const status = (message, error = false) => { statusElement.textContent = message; statusElement.dataset.error = error ? 'true' : 'false'; };
+const status = (message, isError=false) => {
+  if (isError) {
+    console.error(message);
+  } else {
+    console.log(message);
+  }
+  return Utils.toast(message, isError, isError ? 5000 : 1000);
+};
+window.statusbar = status; // Expose for debugging
+let shareDialog = null;
 const database = await LocalDatabase.fromObject();
 window.database = database; // Expose for debugging
 const codec = PackageCodec.fromObject();
@@ -32,9 +43,14 @@ const router = Router.fromObject({ target: app, routes: {
   player: PlayerView,
 } });
 
-const storedBundle = async () => {
+const storedBundleForPlaylist = async (playlistId) => {
+  const playlist = store.packageData.playlists.find((entry) => entry.id === playlistId);
+  if (!playlist) throw new Error('Choose a playlist before exporting it.');
+  const items = playlist.itemIds
+    .map((id) => store.packageData.items.find((item) => item.id === id))
+    .filter(Boolean);
   const attachments = [];
-  for (const item of store.packageData.items) {
+  for (const item of items) {
     if (!item.audioBlobId) continue;
     const record = await database.getAudio(item.audioBlobId);
     if (record?.blob) attachments.push(AudioAttachment.fromObject({
@@ -46,9 +62,39 @@ const storedBundle = async () => {
     }));
   }
   return PackageBundle.fromObject({
-    studyPackage: store.packageData,
+    studyPackage: StudyPackage.fromObject({ playlists: [playlist], items }),
     attachments
   });
+};
+
+const exportPlaylist = async (playlistId) => {
+  try {
+    const playlist = store.packageData.playlists.find((entry) => entry.id === playlistId);
+    const text = await codec.serializeBundle(await storedBundleForPlaylist(playlistId));
+    const safeTitle = (playlist?.title || 'playlist').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'playlist';
+    downloadText(`${safeTitle}.psm.json`, text);
+    status('Playlist exported.');
+  } catch (error) {
+    status(error.message, true);
+  }
+};
+
+const sharePlaylist = async (playlistId) => {
+  try {
+    await store.save();
+    const playlist = store.packageData.playlists.find((entry) => entry.id === playlistId);
+    if (!playlist) throw new Error('Choose a playlist before sending it.');
+    const packageText = await codec.serializeBundle(await storedBundleForPlaylist(playlistId));
+    status(`Preparing “${playlist.title}” for phone transfer...`);
+    const result = await extensionBridge.sharePackage(packageText, {
+      onProgress: ({ completed, total }) => status(`Sending package to local server (${completed} of ${total} chunks)...`)
+    });
+    status('Package ready. Scan the QR code with the phone.');
+    shareDialog?.destroy();
+    shareDialog = PlaylistShareDialog.fromObject({ target: document.body, url: result.url, title: playlist.title });
+  } catch (error) {
+    status(error.message, true);
+  }
 };
 
 const importBundleFile = async (file) => {
@@ -92,7 +138,7 @@ const collectAssignments = async ({
     const attachments = [];
     const itemIds = [];
     for (const assignment of assignments) {
-      const itemId = `item-${crypto.randomUUID()}`;
+      const itemId = createId('item');
       const collected = assignment.kind === 'text' ? null : collectedById.get(assignment.id);
       if (assignment.kind === 'url' && !collected) continue;
       const selectedVerses = parseVerseSelection(assignment.label);
@@ -210,21 +256,15 @@ const navigate = (name) => {
         navigate('library');
       }
     },
-    onExport: async () => {
-      try {
-        const text = await codec.serializeBundle(await storedBundle());
-        downloadText('personal-study-mate.psm.json', text);
-        status('Package exported.');
-      } catch (error) {
-        status(error.message, true);
-      }
-    }
   });
   if (name === 'editor') router.navigate(name, {
     store,
     database,
     aligner,
     extensionBridge,
+    extensionAvailable,
+    onExport: exportPlaylist,
+    onShare: sharePlaylist,
     onStatus: status,
     onBack: () => navigate('library'),
     onPlayer: () => navigate('player')
@@ -247,4 +287,17 @@ const downloadText = (name, text) => {
   link.click();
   URL.revokeObjectURL(link.href);
 };
+const transferReceiver = PackageTransferReceiver.fromObject({
+  onAnnouncement: (message) => Utils.toast(`A playlist is coming from ${message.fileName || 'another device'}…`),
+  onPackage: async (packageText) => {
+    const imported = codec.importAsNew(await codec.parseBundle(packageText));
+    const title = imported.studyPackage.playlists[0]?.title || 'this playlist';
+    if (!confirm(`Import “${title}” into Personal Study Mate?`)) throw new Error('Import cancelled.');
+    await store.importBundle(imported);
+    status(`Imported ${imported.studyPackage.playlists.length} playlist(s).`);
+    Utils.toast(`Imported “${title}”.`);
+    navigate('library');
+  }
+});
 navigate('library');
+transferReceiver.start();

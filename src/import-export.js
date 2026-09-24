@@ -1,4 +1,5 @@
 import { AudioAttachment, PackageBundle, StudyItem, StudyPackage, Playlist } from './models.js';
+import { createId } from './ids.js';
 const CONSTRUCTION_TOKEN = Symbol('codec-construction-token');
 
 const toBase64 = (bytes) => {
@@ -16,8 +17,8 @@ const fromBase64 = (value) => {
 };
 
 const remapBundle = (bundle) => {
-  const playlistIds = new Map(bundle.studyPackage.playlists.map((playlist) => [playlist.id, crypto.randomUUID()]));
-  const itemIds = new Map(bundle.studyPackage.items.map((item) => [item.id, crypto.randomUUID()]));
+  const playlistIds = new Map(bundle.studyPackage.playlists.map((playlist) => [playlist.id, createId('playlist')]));
+  const itemIds = new Map(bundle.studyPackage.items.map((item) => [item.id, createId('item')]));
   const playlists = bundle.studyPackage.playlists.map((playlist) => Playlist.fromObject({
     ...playlist.toObject(),
     id: playlistIds.get(playlist.id),

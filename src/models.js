@@ -1,8 +1,10 @@
+import { createId } from './ids.js';
+
 const FORMAT = 'personal-study-mate';
 const VERSION = 1;
 const CONSTRUCTION_TOKEN = Symbol('model-construction-token');
 
-const makeId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
+const makeId = (prefix) => createId(prefix);
 const now = () => new Date().toISOString();
 
 export class WordTiming {

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTTP file sender</title>
+  <style>
+    body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui, sans-serif; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input { box-sizing: border-box; margin-top: .35rem; padding: .6rem; width: 100%; }
+    button { cursor: pointer; margin-top: 1.25rem; padding: .65rem 1rem; }
+    pre { background: #f3f3f3; border: 1px solid #ddd; margin-top: 1.25rem; max-height: 18rem; overflow: auto; padding: 1rem; white-space: pre-wrap; }
+    .note { color: #555; }
+  </style>
+</head>
+<body>
+  <h1>HTTP file sender</h1>
+  <p class="note">
+    Serve this page from the project root over HTTP. It loads
+    <code>private-assets/jsh-male.mp3</code>, encodes it as base64, and sends it
+    to the HTTPS receiver in another window.
+  </p>
+
+  <label for="receiver-url">HTTPS receiver URL</label>
+  <input id="receiver-url" type="url"
+    value="https://11642848-53b3-4f2d-a70c-e9126cbf83d2-00-zlbh4jap4s1m.kirk.replit.dev/postmessage-file-test/https-receiver.html"
+    spellcheck="false">
+  <button id="send-button" type="button">Open receiver and send audio</button>
+  <pre id="status" aria-live="polite">Ready.</pre>
+
+  <script>
+    if (location.protocol.startsWith('https') || location.hostname === 'localhost') {
+      alert('This page must be served over HTTP, not HTTPS.');
+    }
+    const AUDIO_URL = '../private-assets/jsh-male.mp3';
+    const AUDIO_FILE_NAME = AUDIO_URL.split('/').pop();
+    const statusElement = document.querySelector('#status');
+    const receiverUrlElement = document.querySelector('#receiver-url');
+    const sendButton = document.querySelector('#send-button');
+
+    function log(message) {
+      statusElement.textContent += `\n${message}`;
+      statusElement.scrollTop = statusElement.scrollHeight;
+    }
+
+    function generateRandomUUID() {
+      return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+        (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+      );
+    }
+
+    function encodeBase64(arrayBuffer) {
+      const bytes = new Uint8Array(arrayBuffer);
+      const chunkSize = 0x8000;
+      let binary = '';
+
+      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+      }
+
+      return btoa(binary);
+    }
+
+    const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    function addTransferId(url, transferId) {
+      const receiverUrl = new URL(url, window.location.href);
+      receiverUrl.searchParams.set('transferId', transferId);
+      return receiverUrl;
+    }
+
+    async function sendAudio(receiverWindow, receiverOrigin, transferId) {
+      receiverWindow.postMessage({
+        type: 'file-coming',
+        transferId,
+        fileName: AUDIO_FILE_NAME
+      }, receiverOrigin);
+      log('Receiver notified that a file is coming...');
+      await nextFrame();
+      log(`Loading ${AUDIO_FILE_NAME} from private-assets...`);
+      const response = await fetch(AUDIO_URL);
+      if (!response.ok) {
+        throw new Error(`Audio request failed with HTTP ${response.status}.`);
+      }
+
+      const audioBuffer = await response.arrayBuffer();
+      log(`Loaded ${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MiB.`);
+      log('Encoding audio as base64...');
+      const base64 = encodeBase64(audioBuffer);
+      log(`Encoded payload is ${(base64.length / 1024 / 1024).toFixed(2)} MiB.`);
+
+      receiverWindow.postMessage({
+        type: 'file-transfer',
+        transferId,
+        fileName: AUDIO_FILE_NAME,
+        mimeType: 'audio/mpeg',
+        byteLength: audioBuffer.byteLength,
+        base64
+      }, receiverOrigin);
+
+      log('Base64 file sent with postMessage(). Waiting for confirmation...');
+    }
+
+    sendButton.addEventListener('click', () => {
+      statusElement.textContent = 'Opening receiver...';
+      sendButton.disabled = true;
+
+      let receiverUrl;
+      try {
+        receiverUrl = new URL(receiverUrlElement.value.trim());
+        if (receiverUrl.protocol !== 'https:') {
+          throw new Error('The receiver URL must use HTTPS.');
+        }
+      } catch (error) {
+        log(error.message);
+        sendButton.disabled = false;
+        return;
+      }
+
+      const transferId = generateRandomUUID();
+      const receiverOrigin = receiverUrl.origin;
+      const receiverUrlWithId = addTransferId(receiverUrl, transferId);
+      const receiverWindow = window.open(receiverUrlWithId.href, '_blank');
+
+      if (!receiverWindow) {
+        log('The browser blocked the receiver popup. Allow popups and try again.');
+        sendButton.disabled = false;
+        return;
+      }
+
+      let hasSent = false;
+      const handleMessage = async (event) => {
+        if (event.source !== receiverWindow || event.origin !== receiverOrigin) {
+          return;
+        }
+
+        if (event.data?.type === 'receiver-ready' && event.data.transferId === transferId) {
+          if (hasSent) {
+            return;
+          }
+          hasSent = true;
+
+          try {
+            await sendAudio(receiverWindow, receiverOrigin, transferId);
+          } catch (error) {
+            log(`Send failed: ${error.message}`);
+            window.removeEventListener('message', handleMessage);
+            sendButton.disabled = false;
+          }
+        }
+
+        if (event.data?.type === 'file-received' && event.data.transferId === transferId) {
+          log(`Receiver confirmed ${event.data.fileName}.`);
+          window.removeEventListener('message', handleMessage);
+          sendButton.disabled = false;
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+      log(`Waiting for ${receiverOrigin} to load...`);
+    });
+  </script>
+</body>
+</html>

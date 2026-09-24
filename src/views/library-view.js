@@ -18,10 +18,10 @@ const sanitizeClipboard = (html) => {
 const serializeChildren = (element) => [...element.childNodes].map((node) => new XMLSerializer().serializeToString(node)).join('');
 
 export class LibraryView extends EventEmitterMixin(DOMElement) {
-  constructor({ target, store, onNew, onOpen, onEdit, onDelete, onExport, onImport, extensionAvailable = false, onCollect }, token) {
+  constructor({ target, store, onNew, onOpen, onEdit, onDelete, onImport, extensionAvailable = false, onCollect }, token) {
     super();
     if (token !== CONSTRUCTION_TOKEN) throw new Error('LibraryView must be created with LibraryView.fromObject().');
-    this.target = target; this.store = store; this.onNew = onNew; this.onOpen = onOpen; this.onEdit = onEdit; this.onDelete = onDelete; this.onExport = onExport; this.onImport = onImport; this.extensionAvailable = extensionAvailable; this.onCollect = onCollect; this.packageListener = () => this.render(); this.store.on('package-changed', this.packageListener);
+    this.target = target; this.store = store; this.onNew = onNew; this.onOpen = onOpen; this.onEdit = onEdit; this.onDelete = onDelete; this.onImport = onImport; this.extensionAvailable = extensionAvailable; this.onCollect = onCollect; this.packageListener = () => this.render(); this.store.on('package-changed', this.packageListener);
   }
 
   static fromObject(value) { return new LibraryView(value, CONSTRUCTION_TOKEN); }
@@ -34,12 +34,11 @@ export class LibraryView extends EventEmitterMixin(DOMElement) {
     Utils.buildDOM(['h1', 'Library'], header);
     const newButton = Utils.ui.button('New playlist'); newButton.className = 'text-button';
     newButton.prepend(Utils.buildDOM(['i', { class: 'fa-solid fa-plus', 'aria-hidden': 'true' }]));
-    const exportButton = Utils.ui.button('Export package'); exportButton.className = 'text-button utility-button';
     const importButton = Utils.ui.button('Import package'); importButton.className = 'text-button utility-button';
-    this.addDOMEventListener(newButton, 'click', this.onNew); this.addDOMEventListener(exportButton, 'click', this.onExport);
+    this.addDOMEventListener(newButton, 'click', this.onNew);
     const importInput = Utils.ui.input('file'); importInput.accept = '.json,application/json'; importInput.hidden = true;
     this.addDOMEventListener(importButton, 'click', () => importInput.click()); this.addDOMEventListener(importInput, 'change', () => { if (importInput.files[0]) this.onImport(importInput.files[0]); importInput.value = ''; });
-    header.append(newButton, exportButton, importButton, importInput); this.node.append(header);
+    header.append(newButton, importButton, importInput); this.node.append(header);
     if (this.extensionAvailable) this.#renderCollector();
     const content = Utils.buildDOM(['div', { class: 'screen-content' }]);
     const list = Utils.buildDOM(['div', { class: 'playlist-list' }]); content.append(list); this.node.append(content);

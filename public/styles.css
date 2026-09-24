@@ -32,20 +32,21 @@ audio { width: 100%; }
 :root { color-scheme: light; --ink: #14213d; --muted-ink: #4f5965; --paper: #f8f7ee; --paper-deep: #eef0e4; --paper-light: #e9ede2; --sage: #e1e7d8; --sage-dark: #586a4c; --olive: #7c8764; --terracotta: #bb5d42; --terracotta-soft: #f2cfc1; --line: rgba(20,33,61,.16); font-family: Georgia, "Times New Roman", serif; }
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; }
-body { min-width: 320px; height: 100vh; margin: 0; padding: 0; background: var(--paper-light); color: var(--ink); line-height: 1.4; }
+body { min-width: 320px; margin: 0; padding: 0; background: var(--paper-light); color: var(--ink); line-height: 1.4; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 #app { width: 100%; height: 100%; }
-.app-screen { position: relative; display: flex; flex-direction: column; width: 100%; height: 100vh; overflow: hidden; border: 0; border-radius: 0; background: radial-gradient(circle at 15% 8%, rgba(255,255,255,.9), transparent 27%), linear-gradient(180deg, var(--paper) 0%, #fbfaf2 100%); }
+.app-screen { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; border: 0; border-radius: 0; background: radial-gradient(circle at 15% 8%, rgba(255,255,255,.9), transparent 27%), linear-gradient(180deg, var(--paper) 0%, #fbfaf2 100%); }
 .screen-header, .player-context { display: flex; align-items: center; gap: 12px; min-height: 74px; padding: 18px 22px 12px; border-bottom: 1px solid var(--line); }
 .screen-header h1, .player-context strong { flex: 1; margin: 0; font-size: clamp(25px, 7vw, 36px); font-weight: 400; letter-spacing: -.04em; }
 .screen-header--editor h1 { text-align: center; font-size: 25px; }
+.screen-header__actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.screen-header--editor .screen-header__actions { margin-right: 48px; }
 .screen-content { flex: 1; padding: 22px 18px 96px; overflow-y: auto; }
 .screen-content.no-top-padding { padding-top: 0; }
 .text-button, .save-button { padding: 0; border: 0; background: none; color: var(--sage-dark); font: 700 12px Arial, sans-serif; }
 .text-button i { margin-right: 5px; }
-.utility-button { display: none; }
 .back-link { flex: 0 0 auto; width: 34px; height: 34px; padding: 0; border: 0; background: none; font-size: 22px; }
 .screen-header--editor .back-link { position: absolute; }
 .playlist-list { border-top: 1px solid var(--line); }
@@ -83,6 +84,30 @@ button { cursor: pointer; }
 .editor-toolbar button:first-child::before { content: "\f0c7"; font-family: "Font Awesome 6 Free"; font-size: 19px; font-weight: 900; }
 .editor-toolbar button:nth-child(2), .editor-toolbar [data-dirty] { display: none; }
 .editor-toolbar [data-dirty] { margin-left: auto; color: var(--muted-ink); font: 12px Arial, sans-serif; }
+.app-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 18px;
+  left: 16px;
+  z-index: 20;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--olive);
+  color: var(--paper);
+  box-shadow: 0 8px 24px rgba(20, 33, 61, .22);
+  font: 14px Arial, sans-serif;
+  text-align: center;
+  transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+.app-toast.is-error { background: var(--terracotta); color: #fff; }
+.share-dialog-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 1rem; background: rgba(20,33,61,.45); }
+.share-dialog { display: grid; justify-items: center; gap: 10px; width: min(100%, 390px); padding: 22px; border-radius: 16px; background: var(--paper); box-shadow: 0 12px 40px rgba(20,33,61,.3); text-align: center; }
+.share-dialog h2, .share-dialog p { margin: 0; }
+.share-dialog canvas { max-width: 100%; height: auto; border-radius: 8px; }
+.share-dialog__fallback { overflow-wrap: anywhere; color: var(--muted-ink); font: 12px Arial, sans-serif; }
 .item-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; min-height: 68px; margin: 0; border-bottom: 1px solid var(--line); }
 .item-row .item-title { display: grid; gap: 4px; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; }
 .item-row .item-title strong { overflow: hidden; text-overflow: ellipsis; font-size: 18px; font-weight: 400; white-space: nowrap; }
