@@ -59,7 +59,18 @@ export class TranscriptAligner {
       paragraph.start = paragraph.words[0]?.start || 0;
       paragraph.end = paragraph.words.at(-1)?.end || paragraph.start;
     });
-    results.slice(0, -1).forEach((paragraph, index) => { paragraph.end = results[index + 1].start; });
+    results.slice(0, -1).forEach((paragraph, index) => {
+      const lastWordEnd = paragraph.words.at(-1)?.end ?? paragraph.end;
+      const nextWordStart = results[index + 1].words[0]?.start ?? results[index + 1].start;
+      paragraph.end = (lastWordEnd + nextWordStart) / 2;
+    });
+    const recordingDuration = Number(transcript.duration) || 0;
+    const finalParagraph = results.at(-1);
+    const finalWord = finalParagraph?.words.at(-1);
+    if (recordingDuration > 0 && finalParagraph) {
+      if (finalWord) finalWord.end = Math.max(finalWord.start, recordingDuration);
+      finalParagraph.end = recordingDuration;
+    }
     return results;
   }
 }

@@ -22,7 +22,9 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
     onShare,
     onStatus,
     onBack,
-    onPlayer
+    onPlayer,
+    onPlayItem,
+    onDelete
   }, token) {
     super();
     if (token !== CONSTRUCTION_TOKEN) throw new Error('PlaylistEditorView must be created with PlaylistEditorView.fromObject().');
@@ -35,6 +37,8 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
     this.onStatus = onStatus;
     this.onBack = onBack;
     this.onPlayer = onPlayer;
+    this.onPlayItem = onPlayItem;
+    this.onDelete = onDelete;
     this.editingItem = false;
     this.session = PlaylistEditorSession.fromObject({
       packageData: store.packageData,
@@ -89,6 +93,11 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
       });
       actions.append(shareButton);
     }
+    const deleteButton = Utils.ui.button('Delete playlist');
+    deleteButton.className = 'text-button danger-button';
+    deleteButton.prepend(Utils.buildDOM(['i', { class: 'fa-solid fa-trash-can', 'aria-hidden': 'true' }]));
+    this.addDOMEventListener(deleteButton, 'click', () => this.onDelete?.(this.session.activePlaylist?.id));
+    actions.append(deleteButton);
     header.append(actions);
     this.addDOMEventListener(back, 'click', () => this.#goBack(back, heading));
     this.node.append(header);
@@ -179,7 +188,7 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
       this.session.updatePlaylist(event.entity);
       this.#updateHeading();
     });
-    this.#listen(items, 'selected', (event) => {
+    this.#listen(items, 'edit', (event) => {
       this.session.selectItem(event.entity.id);
       this.editingItem = true;
       this.node.classList.add('is-item-editing');
@@ -187,18 +196,23 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
       this.#refreshItem(items, itemEditor);
       this.node.querySelector('h1').textContent = 'Edit item';
     });
+    this.#listen(items, 'play', (event) => {
+      this.store.selectPlaylist(this.session.activePlaylist?.id);
+      this.store.selectItem(event.entity.id);
+      this.onPlayItem?.(event.entity.id);
+    });
     this.#listen(items, 'add', (event) => {
       this.session.addItem(event.message);
       this.#refreshItemList(items);
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(items, 'remove', (event) => {
       if (confirm(`Remove ${event.entity.title}?`)) {
         this.session.removeItem(event.entity.id);
         this.#refreshItemList(items);
         this.#refreshItem(items, itemEditor);
-        this.#onSave();
+        this.#scheduleSave();
       }
     });
     this.#listen(items, 'reorder', (event) => {
@@ -207,21 +221,21 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
       ids.splice(event.entity.to, 0, moved);
       this.session.reorderItems(ids);
       this.#refreshItemList(items);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'changed', (event) => {
       this.session.updateItem(event.entity);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'text-changed', (event) => {
       this.session.updateItemText(this.session.activeItem, event.message);
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'paragraphs-changed', (event) => {
       this.session.updateParagraphs(this.session.activeItem, event.entity);
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'paragraph-move', (event) => {
       const paragraphs = [...this.session.activeItem.paragraphs];
@@ -229,27 +243,27 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
       paragraphs.splice(event.entity.to, 0, moved);
       this.session.updateParagraphs(this.session.activeItem, paragraphs);
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'paragraph-remove', (event) => {
       this.session.updateParagraphs(this.session.activeItem, this.session.activeItem.paragraphs.filter((paragraph) => paragraph.id !== event.entity.id));
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'audio-attached', (event) => {
       this.session.attachAudio(this.session.activeItem, event.entity);
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'audio-removed', () => {
       this.session.removeAudio(this.session.activeItem);
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'processed', (event) => {
       this.session.updateItem(event.entity);
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'unlock', (event) => {
       this.session.updateItem(StudyItem.fromObject({
@@ -258,7 +272,7 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
         processing: null
       }));
       this.#refreshItem(items, itemEditor);
-      this.#onSave();
+      this.#scheduleSave();
     });
     this.#listen(itemEditor, 'remove-item', (event) => {
       if (confirm(`Remove ${event.entity.title}?`)) {
@@ -266,16 +280,19 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
         this.editingItem = false;
         this.node.classList.remove('is-item-editing');
         this.#refresh(details, items, itemEditor);
-        this.#onSave();
+      this.#scheduleSave();
       }
     });
-    this.#listen(toolbar, 'save', () => this.#onSave());
-    this.#listen(toolbar, 'revert', async () => {
-      if (!this.session.dirty || confirm('Revert unsaved changes?')) await this.session.revert();
-    });
+    this.#listen(this.session, 'dirty-changed', () => this.#scheduleSave());
+  }
+
+  #scheduleSave() {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.#onSave(), 2000);
   }
 
   async #onSave() {
+    if (!this.session.dirty) return;
     try {
       await this.session.save();
     } catch (error) {
@@ -308,11 +325,13 @@ export class PlaylistEditorView extends EventEmitterMixin(DOMElement) {
     });
   }
   destroy() {
+    clearTimeout(this.saveTimer);
     this.sessionListeners.forEach(({
       source,
       event,
       listener
     }) => source.off(event, listener));
+    if (this.session.dirty) this.#onSave();
     this.children.forEach((child) => child.destroy());
     this.processor.destroy();
     this.session.destroy();

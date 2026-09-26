@@ -10,10 +10,11 @@ export class BrowserTts {
     return new BrowserTts(CONSTRUCTION_TOKEN);
   }
 
-  speak(text, { onBoundary = () => {}, onEnd = () => {}, onError = () => {} } = {}) {
+  speak(text, { onBoundary = () => {}, onEnd = () => {}, onError = () => {}, rate = 1 } = {}) {
     this.stop();
     if (!('speechSynthesis' in window)) throw new Error('This browser does not provide speech synthesis.');
     this.utterance = new SpeechSynthesisUtterance(text);
+    this.utterance.rate = rate;
     this.utterance.onboundary = (event) => onBoundary(event.charIndex);
     this.utterance.onend = onEnd;
     this.utterance.onerror = onError;

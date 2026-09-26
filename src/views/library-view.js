@@ -51,8 +51,10 @@ export class LibraryView extends EventEmitterMixin(DOMElement) {
       const open = Utils.ui.button('Open in Player'); open.className = 'icon-button'; open.title = 'Open in Player'; open.setAttribute('aria-label', 'Open in Player'); open.append(Utils.buildDOM(['i', { class: 'fa-solid fa-play' }]));
       const edit = Utils.ui.button('Edit'); edit.className = 'icon-button'; edit.title = 'Edit playlist'; edit.setAttribute('aria-label', 'Edit playlist'); edit.append(Utils.buildDOM(['i', { class: 'fa-solid fa-pen' }]));
       const remove = Utils.ui.button('Delete'); remove.className = 'icon-button danger'; remove.title = 'Delete playlist'; remove.setAttribute('aria-label', 'Delete playlist'); remove.append(Utils.buildDOM(['i', { class: 'fa-solid fa-trash-can' }]));
-      this.addDOMEventListener(open, 'click', () => this.onOpen(playlist.id)); this.addDOMEventListener(edit, 'click', () => this.onEdit(playlist.id)); this.addDOMEventListener(remove, 'click', () => this.onDelete(playlist.id));
-      this.addDOMEventListener(body, 'click', () => this.onEdit(playlist.id));
+      this.addDOMEventListener(card, 'click', () => this.onOpen(playlist.id));
+      this.addDOMEventListener(open, 'click', (event) => { event.stopPropagation(); this.onOpen(playlist.id); });
+      this.addDOMEventListener(edit, 'click', (event) => { event.stopPropagation(); this.onEdit(playlist.id); });
+      this.addDOMEventListener(remove, 'click', (event) => { event.stopPropagation(); this.onDelete(playlist.id); });
       actions.append(open, edit, remove); card.append(accent, body, actions); list.append(card);
     });
     const nav = Utils.buildDOM(['nav', { class: 'bottom-nav', 'aria-label': 'Primary navigation' }]);

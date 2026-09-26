@@ -1,4 +1,7 @@
 import { DOMElement } from './modules.js';
+import { NoSleep } from './nosleep.min.js';
+
+const sleeper = new NoSleep();
 class Toast extends DOMElement {
     constructor(message, isError = false, timeout=8000) {
         super();
@@ -97,6 +100,7 @@ export class Utils {
     static toast(message, isError=false, timeout=8000) {
         return new Toast(message, isError, timeout);
     }
+    static get keepScreenOn() { return sleeper; }
 }
 
 function INTERNAL_warnBeforeClosing(event) {

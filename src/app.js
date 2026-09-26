@@ -267,7 +267,18 @@ const navigate = (name) => {
     onShare: sharePlaylist,
     onStatus: status,
     onBack: () => navigate('library'),
-    onPlayer: () => navigate('player')
+    onPlayer: () => navigate('player'),
+    onPlayItem: (itemId) => {
+      store.selectItem(itemId);
+      navigate('player');
+    },
+    onDelete: async (id) => {
+      if (confirm('Delete this playlist?')) {
+        await store.deletePlaylist(id);
+        status('Playlist deleted.');
+        navigate('library');
+      }
+    }
   });
   if (name === 'player') router.navigate(name, {
     store,

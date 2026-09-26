@@ -48,6 +48,7 @@ class AudioMediaSource extends EventEmitterMixin(Object) {
     this.currentTime = 0;
     this.playing = false;
     this.ended = false;
+    this.playbackRate = 1;
     this.#bindEvents();
   }
 
@@ -186,6 +187,19 @@ class AudioMediaSource extends EventEmitterMixin(Object) {
 
   timelineTimeForSourceTime(time) { return this.#timelineTimeForRawTime(Number(time) || 0); }
 
+  getParagraphStartTime(paragraphIndex) {
+    return this.segments?.find((segment) => segment.paragraphIndex === paragraphIndex)?.timelineStart ?? null;
+  }
+
+  getParagraphIndexAtTime(time) {
+    return this.#findSegmentForTimelineTime(Number(time) || 0)?.paragraphIndex ?? null;
+  }
+
+  setPlaybackRate(rate) {
+    this.playbackRate = rate;
+    this.element.playbackRate = rate;
+  }
+
   destroy() {
     this.pause();
     this.#listeners.forEach(([type, listener]) => this.element.removeEventListener(type, listener));
@@ -202,6 +216,7 @@ class TtsMediaSource extends EventEmitterMixin(Object) {
     this.tts = tts;
     this.element = Utils.buildDOM(['span', { 'aria-hidden': 'true' }]);
     this.element.hidden = true;
+    this.playableParagraphIndices = paragraphs.map((paragraph, index) => paragraph.play && paragraph.text.trim() ? index : -1).filter((index) => index >= 0);
     this.paragraphs = paragraphs.filter((paragraph) => paragraph.play && paragraph.text.trim());
     this.speechText = this.paragraphs.map((paragraph) => paragraph.text).join('\n\n');
     this.ranges = [];
@@ -211,13 +226,14 @@ class TtsMediaSource extends EventEmitterMixin(Object) {
       if (index > 0) characterStart += 2;
       const wordCount = paragraph.text.match(/[A-Za-z0-9']+/g)?.length || 1;
       const paragraphDuration = Math.max(0.75, wordCount / 2.5);
-      this.ranges.push({ characterStart, characterEnd: characterStart + paragraph.text.length, timeStart: this.duration, timeEnd: this.duration + paragraphDuration });
+      this.ranges.push({ paragraphIndex: this.playableParagraphIndices[index], characterStart, characterEnd: characterStart + paragraph.text.length, timeStart: this.duration, timeEnd: this.duration + paragraphDuration });
       characterStart += paragraph.text.length;
       this.duration += paragraphDuration;
     });
     this.currentTime = 0;
     this.playing = false;
     this.ended = false;
+    this.playbackRate = 1;
     this.#timer = null;
     this.#generation = 0;
     this.emit('durationchange', this.duration);
@@ -247,6 +263,14 @@ class TtsMediaSource extends EventEmitterMixin(Object) {
 
   timelineTimeForCharacter(index) { return this.#timeForCharacter(Number(index) || 0); }
 
+  getParagraphStartTime(paragraphIndex) {
+    return this.ranges.find((range) => range.paragraphIndex === paragraphIndex)?.timeStart ?? null;
+  }
+
+  getParagraphIndexAtTime(time) {
+    return this.ranges.find((range) => time >= range.timeStart && time < range.timeEnd)?.paragraphIndex ?? this.ranges.at(-1)?.paragraphIndex ?? null;
+  }
+
   seekToCharacter(index) { this.seek(this.#timeForCharacter(Number(index) || 0)); }
 
   #emitTimeUpdate() { this.emit('timeupdate', { time: this.currentTime, sourceTime: this.currentTime }); }
@@ -273,6 +297,7 @@ class TtsMediaSource extends EventEmitterMixin(Object) {
     this.#clockTime = this.currentTime;
     this.#clockStart = performance.now();
     this.tts.speak(this.speechText.slice(characterStart), {
+      rate: this.playbackRate,
       onBoundary: (relativeCharacterIndex) => {
         if (generation !== this.#generation) return;
         const characterIndex = characterStart + relativeCharacterIndex;
@@ -310,6 +335,21 @@ class TtsMediaSource extends EventEmitterMixin(Object) {
     else this.#speakFrom(this.#characterForTime(this.currentTime));
   }
 
+  setPlaybackRate(rate) {
+    if (this.playbackRate === rate) return;
+    this.playbackRate = rate;
+    if (!this.playing) return;
+    this.#updateClock();
+    ++this.#generation;
+    this.tts.stop();
+    this.#stopTimer();
+    this.#started = false;
+    this.playing = false;
+    this.#speakFrom(this.#characterForTime(this.currentTime));
+    this.playing = true;
+    this.#startTimer();
+  }
+
   pause() {
     this.#updateClock();
     this.playing = false;
@@ -340,15 +380,21 @@ class TtsMediaSource extends EventEmitterMixin(Object) {
 }
 
 export class MediaPlayer extends EventEmitterMixin(DOMElement) {
-  constructor({ source, canPrevious = false, canNext = false, onPrevious = () => {}, onNext = () => {} }, token) {
+  constructor({ source, canPrevious = false, canNext = false, onPrevious = () => {}, onNext = () => {}, onRewind = () => {}, onForward = () => {}, playbackRate = 1, keepScreenOn = true }, token) {
     super();
     if (token !== CONSTRUCTION_TOKEN) throw new Error('MediaPlayer must be created with MediaPlayer.fromObject().');
     this.source = source;
     this.onPrevious = onPrevious;
     this.onNext = onNext;
+    this.onRewind = onRewind;
+    this.onForward = onForward;
+    this.canPrevious = false;
+    this.keepScreenOn = !!keepScreenOn;
     this.node = Utils.buildDOM(['div', { class: 'media-player' }]);
     this.backButton = Utils.ui.button('Back');
+    this.rewindButton = Utils.ui.button('Rewind');
     this.playButton = Utils.ui.button('Play');
+    this.forwardButton = Utils.ui.button('Fast-forward');
     this.skipButton = Utils.ui.button('Skip');
     this.slider = Utils.ui.input('range');
     this.slider.min = '0';
@@ -357,8 +403,9 @@ export class MediaPlayer extends EventEmitterMixin(DOMElement) {
     this.slider.setAttribute('aria-label', 'Playback position');
     this.currentTimeElement = Utils.buildDOM(['span', '0:00']);
     this.durationElement = Utils.buildDOM(['span', '0:00']);
-    this.node.append(this.backButton, this.playButton, this.skipButton, this.slider, this.currentTimeElement, Utils.buildDOM(['span', ' / ']), this.durationElement, source.element);
+    this.node.append(this.backButton, this.rewindButton, this.playButton, this.forwardButton, this.skipButton, this.slider, this.currentTimeElement, Utils.buildDOM(['span', ' / ']), this.durationElement, source.element);
     this.setNavigation({ canPrevious, canNext });
+    this.setPlaybackRate(playbackRate);
     this.#bindEvents();
     this.#updateDuration();
     this.#updateTime({ time: source.currentTime, sourceTime: source.currentTime });
@@ -377,8 +424,13 @@ export class MediaPlayer extends EventEmitterMixin(DOMElement) {
       }
       Promise.resolve(this.source.play()).finally(() => this.#updatePlayLabel());
     });
+    this.addDOMEventListener(this.rewindButton, 'click', () => this.onRewind());
+    this.addDOMEventListener(this.forwardButton, 'click', () => this.onForward());
     this.addDOMEventListener(this.slider, 'input', () => this.source.seek(Number(this.slider.value)));
-    this.addDOMEventListener(this.backButton, 'click', () => this.onPrevious());
+    this.addDOMEventListener(this.backButton, 'click', () => {
+      if (this.source.currentTime <= 5 && this.canPrevious) this.onPrevious();
+      else this.source.seek(0);
+    });
     this.addDOMEventListener(this.skipButton, 'click', () => this.onNext());
     const listeners = {
       durationchange: () => this.#updateDuration(),
@@ -410,19 +462,27 @@ export class MediaPlayer extends EventEmitterMixin(DOMElement) {
     this.playButton.textContent = playing ? 'Pause' : 'Play';
     this.playButton.classList.toggle('is-playing', playing);
     this.playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    
+    if (this.keepScreenOn && Utils.keepScreenOn.enabled !== playing)
+      Utils.keepScreenOn[playing ? 'enable' : 'disable']();
   }
 
   setNavigation({ canPrevious = false, canNext = false } = {}) {
-    this.backButton.disabled = !canPrevious;
+    this.canPrevious = canPrevious;
+    this.backButton.disabled = false;
     this.skipButton.disabled = !canNext;
   }
 
   seekToSourceTime(time) { this.source.seekToSourceTime?.(time); }
   seekToCharacter(index) { this.source.seekToCharacter?.(index); }
+  seek(time) { this.source.seek(time); }
+  getParagraphStartTime(index) { return this.source.getParagraphStartTime?.(index) ?? null; }
+  getParagraphIndexAtTime(time) { return this.source.getParagraphIndexAtTime?.(time) ?? null; }
   play() { return Promise.resolve(this.source.play()).finally(() => this.#updatePlayLabel()); }
   pause() { this.source.pause(); this.#updatePlayLabel(); }
   get currentTime() { return this.source.currentTime; }
   get duration() { return this.source.duration; }
+  setPlaybackRate(rate) { this.source.setPlaybackRate?.(rate); }
 
   destroy() {
     this.#sourceListeners.forEach(([event, listener]) => this.source.off(event, listener));
