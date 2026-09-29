@@ -6,6 +6,28 @@ const CONSTRUCTION_TOKEN = Symbol('player-view-construction-token');
 const PLAYBACK_RATE_KEY = 'personal-study-mate.playback-rate';
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+const formatPlayableItemLabel = (item) => {
+  if (!item?.paragraphs?.length || item.paragraphs.every((paragraph) => paragraph.play)) return item?.title || 'Untitled item';
+  const numberedParagraphs = item.paragraphs.filter((paragraph) => Number.isInteger(paragraph.number));
+  if (!numberedParagraphs.length) return item.title;
+  const playableNumbers = numberedParagraphs.filter((paragraph) => paragraph.play).map((paragraph) => paragraph.number);
+  if (!playableNumbers.length) return item.title;
+  const ranges = [];
+  let start = playableNumbers[0];
+  let end = start;
+  playableNumbers.slice(1).forEach((number) => {
+    if (number === end + 1) {
+      end = number;
+      return;
+    }
+    ranges.push(start === end ? String(start) : `${start}-${end}`);
+    start = number;
+    end = number;
+  });
+  ranges.push(start === end ? String(start) : `${start}-${end}`);
+  return `${item.title}:${ranges.join(',')}`;
+};
+
 const readPlaybackRate = () => {
   try {
     const value = Number(localStorage.getItem(PLAYBACK_RATE_KEY));
@@ -40,6 +62,10 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
     this.slowScrollTimer = null;
     this.scrollRecoveryFinishTimer = null;
     this.autoScrollIgnoreUntil = 0;
+    this.playlistDurations = new Map();
+    this.progressPlaylistId = null;
+    this.progressPreparationVersion = 0;
+    this.playlistDurationsLoading = false;
   }
 
   static fromObject(value) { return new PlayerView(value, CONSTRUCTION_TOKEN); }
@@ -58,8 +84,12 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
     const artwork = Utils.buildDOM(['span', { class: 'artwork', 'aria-hidden': 'true' }]);
     const copy = Utils.buildDOM(['span', { class: 'player-context__copy' }]);
     Utils.buildDOM(['strong', playlist?.title || 'Player'], copy);
-    Utils.buildDOM(['small', { 'data-item-label': 'true' }, currentItem?.title || 'No item selected'], copy);
+    Utils.buildDOM(['small', { 'data-item-label': 'true' }, currentItem ? formatPlayableItemLabel(currentItem) : 'No item selected'], copy);
     header.append(back, artwork, copy); this.node.append(header);
+    const overallProgress = Utils.buildDOM(['div', { class: 'player-overall-progress', 'data-overall-progress': 'true', role: 'progressbar', 'aria-label': 'Playable track progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }]);
+    const overallProgressFill = Utils.buildDOM(['div', { class: 'player-overall-progress__fill' }]);
+    overallProgress.append(overallProgressFill);
+    this.node.append(overallProgress);
     if (!playlist) {
       const empty = Utils.buildDOM(['div', { class: 'screen-content player-content' }]); Utils.buildDOM(['p', 'No playlists saved yet.'], empty); this.node.append(empty); this.#appendNav();
       parent.append(this.node);
@@ -109,6 +139,7 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
     content.append(select, text, pin, controls, tools); this.node.append(content);
     parent.append(this.node);
     this.#bindTranscriptScrolling(text);
+    this.#preparePlaylistProgress(playlist);
 
     const selected = currentItem;
     if (selected) {
@@ -160,7 +191,7 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
   async renderItem(item, autoPlay) {
     const version = ++this.renderVersion;
     const itemLabel = this.node?.querySelector('[data-item-label]');
-    if (itemLabel) itemLabel.textContent = item.title;
+    if (itemLabel) itemLabel.textContent = formatPlayableItemLabel(item);
     this.#destroyMediaPlayer();
     const controls = this.node?.querySelector('[data-controls]');
     const text = this.node?.querySelector('[data-text]');
@@ -197,10 +228,14 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
     controls.append(this.mediaPlayer.node);
     this.mediaPlayer.on('timeupdate', (event) => {
       if (item.type === 'audio') this.updateHighlight(item, event?.sourceTime ?? event?.time ?? 0);
+      this.#updateOverallProgress();
     });
     this.mediaPlayer.on('boundary', (event) => this.updateTtsHighlight(event.characterIndex));
     this.mediaPlayer.on('error', (error) => this.controller.status(error?.message || 'Playback failed.', true));
     this.renderText(item, text, this.mediaPlayer);
+    if (this.mediaPlayer.duration > 0) this.playlistDurations.set(item.id, this.mediaPlayer.duration);
+    this.playlistDurationsLoading = this.store.activeItems.some((entry) => !this.playlistDurations.has(entry.id));
+    this.#updateOverallProgress();
     if (autoPlay) this.mediaPlayer.play();
   }
 
@@ -236,6 +271,89 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
     if (Number.isFinite(startTime)) this.mediaPlayer.seek(startTime);
   }
 
+  async #preparePlaylistProgress(playlist) {
+    if (!playlist) return;
+    const preparationVersion = ++this.progressPreparationVersion;
+    this.progressPlaylistId = playlist.id;
+    this.playlistDurations = new Map();
+    this.playlistDurationsLoading = true;
+    this.#updateOverallProgress();
+    await Promise.all(this.store.activeItems.map(async (item) => {
+      const duration = await this.#getItemDuration(item);
+      if (preparationVersion !== this.progressPreparationVersion) return;
+      if (duration !== null) this.playlistDurations.set(item.id, duration);
+      this.#updateOverallProgress();
+    }));
+    if (preparationVersion === this.progressPreparationVersion) {
+      this.playlistDurationsLoading = this.store.activeItems.some((item) => !this.playlistDurations.has(item.id));
+      this.#updateOverallProgress();
+    }
+  }
+
+  async #getItemDuration(item) {
+    let source;
+    try {
+      source = item.type === 'audio'
+        ? await this.controller.createAudioSource(item)
+        : this.controller.createTtsSource(item);
+      if (source.duration > 0 || item.type !== 'audio') return source.duration;
+      const record = await this.controller.database.getAudio(item.audioBlobId);
+      if (!record?.blob) return null;
+      const probe = Utils.buildDOM(['audio', { preload: 'metadata' }]);
+      const objectUrl = URL.createObjectURL(record.blob);
+      probe.src = objectUrl;
+      probe.hidden = true;
+      document.body.append(probe);
+      try {
+        const duration = await new Promise((resolve) => {
+          let settled = false;
+          const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            probe.removeEventListener('loadedmetadata', onMetadata);
+            probe.removeEventListener('durationchange', onMetadata);
+            probe.removeEventListener('error', onError);
+            resolve(Number(value) || 0);
+          };
+          const onMetadata = () => finish(probe.duration);
+          const onError = () => finish(0);
+          probe.addEventListener('loadedmetadata', onMetadata);
+          probe.addEventListener('durationchange', onMetadata);
+          probe.addEventListener('error', onError);
+          probe.load();
+          setTimeout(() => finish(probe.duration), 5000);
+        });
+        return duration > 0 ? duration : null;
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+        probe.remove();
+      }
+    } catch {
+      return null;
+    } finally {
+      source?.destroy();
+    }
+  }
+
+  #updateOverallProgress() {
+    const progress = this.node?.querySelector('[data-overall-progress]');
+    const fill = progress?.querySelector('.player-overall-progress__fill');
+    if (!progress || !fill) return;
+    const items = this.store.activeItems;
+    const currentIndex = items.findIndex((item) => item.id === this.currentItemId);
+    const currentItem = items[currentIndex];
+    const currentDuration = Number(this.mediaPlayer?.duration || this.playlistDurations.get(currentItem?.id)) || 0;
+    const currentTime = Math.max(0, Number(this.mediaPlayer?.currentTime) || 0);
+    const beforeCurrent = items.slice(0, Math.max(0, currentIndex)).reduce((total, item) => total + (Number(this.playlistDurations.get(item.id)) || 0), 0);
+    const total = items.reduce((sum, item) => sum + (Number(this.playlistDurations.get(item.id)) || 0), 0);
+    const hasUnknownDuration = items.some((item) => !this.playlistDurations.has(item.id));
+    const percent = !hasUnknownDuration && total > 0
+      ? Math.min(100, (beforeCurrent + Math.min(currentTime, currentDuration)) / total * 100)
+      : 0;
+    fill.style.width = `${percent}%`;
+    progress.setAttribute('aria-valuenow', String(Math.round(percent)));
+  }
+
   renderText(item, target, mediaPlayer) {
     this.activeWord = null;
     let audioCharacterIndex = 0;
@@ -269,6 +387,7 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
           const wordIndex = paragraphElement.querySelectorAll('.word').length;
           if (mediaPlayer && paragraphIsPlayable) {
             this.addDOMEventListener(word, 'click', () => {
+              this.#resumeAutoScroll();
               if (item.type === 'audio' && paragraph.words[wordIndex]) mediaPlayer.seekToSourceTime(paragraph.words[wordIndex].start);
               if (item.type === 'tts') mediaPlayer.seekToCharacter(Number(word.dataset.charStart));
               mediaPlayer.play();
@@ -387,6 +506,12 @@ export class PlayerView extends EventEmitterMixin(DOMElement) {
     this.scrollRecoveryTimer = null;
     this.slowScrollTimer = null;
     this.scrollRecoveryFinishTimer = null;
+  }
+
+  #resumeAutoScroll() {
+    this.#cancelScrollRecovery();
+    this.scrollMode = 'normal';
+    this.autoScrollIgnoreUntil = 0;
   }
 
   #destroyMediaPlayer() {

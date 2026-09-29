@@ -175,6 +175,8 @@ button { cursor: pointer; }
 .media-player > span:nth-of-type(2) { display: none; }
 .media-player > span:nth-of-type(3) { grid-column: 5; grid-row: 3; justify-self: end; }
 .player-context { padding-top: 16px; }
+.player-overall-progress { height: 3px; overflow: hidden; background: rgba(88,106,76,.18); }
+.player-overall-progress__fill { width: 0; height: 100%; background: var(--sage-dark); transition: width .15s linear; }
 .artwork { display: inline-block; width: 48px; height: 48px; border-radius: 8px; background: url(/public/img/calm-sunset.png) no-repeat center/cover; }
 .player-context__copy { display: grid; flex: 1; gap: 4px; } .player-context__copy strong { font-size: 22px; } .player-context__copy small { color: var(--terracotta); font: 700 11px Arial, sans-serif; letter-spacing: .18em; }
 .player-content { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
