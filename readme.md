@@ -1,107 +1,38 @@
-# Personal Study Mate
+# Personal Study Companion
 
 Personal Study Mate is a local-first browser app for playing study assignments as audio while displaying the corresponding text. The current MVP supports manually supplied JSON playlists, local audio files, browser-native TTS, and local Whisper transcription/alignment for pre-recorded audio.
 
-## Source structure
+## Instructions for Build and Use
 
-```text
-/
-  index.html
-  src/
-    app.js
-    router.js
-    db.js
-    models.js
-    import-export.js
-    transcription.js
-    alignment.js
-    tts.js
-    player.js
-    views/
-      player-view.js
-      library-view.js
-      playlist-editor-view.js
-  public/
-    styles.css
-```
+Steps to build and/or run the software:
 
-`app.js` is the composition root only. Navigation, playback, persistence, processing, and view rendering each have separate modules.
+1. Install `extension` as a unpacked extension
+2. run `start-server.bat`
+3. run the web server somehow (use live-server, or `python -m http.server 8000`)
 
-## Run the MVP
+Instructions for using the software:
 
-Serve this folder from a local HTTP server. ES modules and browser storage are not reliable from a `file://` URL.
+1. Paste in a list of items to be collected on the main screen
+2. Click collect
+3. Wait for collection and audio processing to finish
+4. Click on Player
+5. Click play to listen
 
-```powershell
-python -m http.server 8000
-```
+## Development Environment
 
-Open [http://localhost:8000](http://localhost:8000) in Chrome or Edge.
+To recreate the development environment, you need the following software and/or libraries with the specified versions:
 
-The first browser transcription may download the browser model. By default, audio stays in the browser. An optional native processor can be run locally with `local-transcription-server\server.py`; when it is running, the extension relays audio to that server for faster, more reliable transcription.
+* `Python 3.13.14+`
 
-The Playlist Editor is UI-driven: create playlists, add TTS or pre-recorded items, attach audio, enter canonical text, split/edit paragraphs, choose which paragraphs play, process recordings, and save changes locally. JSON import/export remains available for backup and migration, but is no longer the normal editing interface.
+## Useful Websites to Learn More
 
-## Use the MVP
+I found these websites useful in developing this software:
 
-1. Open **Library** and create a playlist.
-2. Press **Edit** on a playlist to open its editor.
-3. Add TTS or pre-recorded items. For audio, attach the local recording and enter its canonical text.
-4. Split the text into paragraphs, assign optional paragraph numbers, and enable or disable paragraphs as needed.
-5. For pre-recorded items, process the recording in the editor to transcribe and align it.
-6. Save the playlist, then open it in **Player**.
-7. Use the browser speech controls for TTS items or the audio controls for recordings.
+* [PeerJS](https://peerjs.com/)
+* [whisper-word-level-timestamps](https://huggingface.co/spaces/Xenova/whisper-word-level-timestamps/tree/main)
 
-The data model supports version 2 package files containing playlist metadata, study items, paragraphs, and embedded audio. Use **Export playlist** in the playlist editor for a JSON backup. When the browser extension and local server are available, **Send to phone** creates a temporary LAN link and QR code for the current playlist.
+## Future Work
 
-## Gospel Library collector extension
+The following items I plan to fix, improve, and/or add to this project in the future:
 
-The optional Manifest V3 extension is in [`extension/`](extension/). To use it during local development:
-
-1. Run the app with `python -m http.server 8000`.
-2. Open `chrome://extensions` or `edge://extensions`.
-3. Enable **Developer mode**, choose **Load unpacked**, and select the `extension` folder.
-4. Refresh the Personal Study Mate page.
-5. In Library, paste the assignment list into the collector panel and choose **Collect assignments**.
-
-The extension opens approved ChurchofJesusChrist.org and legacy lds.org pages in inactive tabs, extracts article or scripture paragraphs, downloads available audio, and streams the results back to the web app. The web app normalizes the collected data, processes audio locally, and stores the final playlist in IndexedDB.
-
-## Optional native transcription server
-
-Install and run the local `faster-whisper` processor from the project root:
-
-```powershell
-python -m pip install -r local-transcription-server\requirements.txt
-python local-transcription-server\server.py
-```
-
-Keep the browser extension enabled while using the server. The app sends audio through the extension to `http://127.0.0.1:2094`, logs transcription progress to the browser console, and falls back to browser transcription if the server is unavailable. Repeated audio files are cached under `local-transcription-server\cache`.
-
-For phone sharing, run the server with a LAN bind and the HTTPS app URL:
-
-```powershell
-python local-transcription-server\server.py --host 0.0.0.0 --app-url https://YOUR-APP-URL/
-```
-
-The phone and computer must be on the same network, and the local server port may need to be allowed through Windows Firewall. Shares are temporary and are deleted after 30 minutes or a successful import.
-
-## JSON shape
-
-```json
-{
-  "format": "personal-study-mate",
-  "version": 2,
-  "playlists": [{
-    "title": "My study playlist",
-    "items": [{
-      "type": "tts",
-      "title": "Reading assignment",
-      "text": "Text to read aloud."
-    }]
-  }],
-  "audio": []
-}
-```
-
-## Architecture rule
-
-Application data uses class instances (`Playlist`, `StudyItem`, `Paragraph`, `WordTiming`, and `StudyPackage`). Classes enforce construction through their static `fromObject()` factories; direct external constructor calls are rejected.
+* [ ] The Pins buttons currently don't work. I want to be able to save parts that stand out to me.
